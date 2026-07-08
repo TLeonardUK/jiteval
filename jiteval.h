@@ -289,10 +289,6 @@ const char* je_error_msg(je_context_t* context);
 #define JE_NODE_LOGICAL_AND             (15)
 #define JE_NODE_LOGICAL_OR              (16)
 #define JE_NODE_CONSTANT                (17)
-#define JE_NODE_FLOAT_LITERAL           (18)
-#define JE_NODE_INT_LITERAL             (19)
-#define JE_NODE_STRING_LITERAL          (20)
-#define JE_NODE_BOOL_LITERAL            (21)
 #define JE_NODE_NOOP                    (22) // Any nodes of this type will be pruned at the end of compiling and replaced with their lvalue child
 #define JE_NODE_NEG                     (23)
 #define JE_NODE_POS                     (24)
@@ -301,6 +297,10 @@ const char* je_error_msg(je_context_t* context);
 #define JE_NODE_CAST_TO_FLOAT           (27)
 #define JE_NODE_CAST_TO_STRING          (28)
 // These are the type-specific versions of the ndoes above.
+#define JE_NODE_FLOAT_LITERAL           (18)
+#define JE_NODE_INT_LITERAL             (19)
+#define JE_NODE_STRING_LITERAL          (20)
+#define JE_NODE_BOOL_LITERAL            (21)
 #define JE_NODE_CAST_INT_TO_STRING      (29)
 #define JE_NODE_CAST_FLOAT_TO_STRING    (30)
 #define JE_NODE_CAST_BOOL_TO_STRING     (31)
