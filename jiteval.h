@@ -269,6 +269,8 @@ const char* je_error_msg(je_context_t* context);
 #define JE_TOK_OP_KEYWORD_STRING        (27)
 #define JE_TOK_OP_KEYWORD_BOOL          (28)
 
+// These are generic node types, that will be converted into type-specific ones
+// during semantic analysis.
 #define JE_NODE_LOGICAL_NOT             (0)
 #define JE_NODE_BITWISE_NOT             (1)
 #define JE_NODE_MUL                     (2)
@@ -291,25 +293,26 @@ const char* je_error_msg(je_context_t* context);
 #define JE_NODE_INT_LITERAL             (19)
 #define JE_NODE_STRING_LITERAL          (20)
 #define JE_NODE_BOOL_LITERAL            (21)
-#define JE_NODE_CAST_TO_BOOL            (22) // These are placeholder nodes that should be replaced just semant with specific ones.
-#define JE_NODE_CAST_TO_INT             (23)
-#define JE_NODE_CAST_TO_FLOAT           (24)
-#define JE_NODE_CAST_TO_STRING          (25)
-#define JE_NODE_CAST_INT_TO_STRING      (26)
-#define JE_NODE_CAST_FLOAT_TO_STRING    (27)
-#define JE_NODE_CAST_BOOL_TO_STRING     (28)
-#define JE_NODE_CAST_STRING_TO_INT      (29)
-#define JE_NODE_CAST_FLOAT_TO_INT       (30)
-#define JE_NODE_CAST_BOOL_TO_INT        (31)
-#define JE_NODE_CAST_INT_TO_FLOAT       (32)
-#define JE_NODE_CAST_STRING_TO_FLOAT    (33)
-#define JE_NODE_CAST_BOOL_TO_FLOAT      (34)
-#define JE_NODE_CAST_INT_TO_BOOL        (35)
-#define JE_NODE_CAST_STRING_TO_BOOL     (36)
-#define JE_NODE_CAST_FLOAT_TO_BOOL      (37)
-#define JE_NODE_NOOP                    (38) // Any nodes of this type will be pruned at the end of compiling and replaced with their lvalue child
-#define JE_NODE_NEG                     (39)
-#define JE_NODE_POS                     (40)
+#define JE_NODE_NOOP                    (22) // Any nodes of this type will be pruned at the end of compiling and replaced with their lvalue child
+#define JE_NODE_NEG                     (23)
+#define JE_NODE_POS                     (24)
+#define JE_NODE_CAST_TO_BOOL            (25) 
+#define JE_NODE_CAST_TO_INT             (26)
+#define JE_NODE_CAST_TO_FLOAT           (27)
+#define JE_NODE_CAST_TO_STRING          (28)
+// These are the type-specific versions of the ndoes above.
+#define JE_NODE_CAST_INT_TO_STRING      (29)
+#define JE_NODE_CAST_FLOAT_TO_STRING    (30)
+#define JE_NODE_CAST_BOOL_TO_STRING     (31)
+#define JE_NODE_CAST_STRING_TO_INT      (32)
+#define JE_NODE_CAST_FLOAT_TO_INT       (33)
+#define JE_NODE_CAST_BOOL_TO_INT        (34)
+#define JE_NODE_CAST_INT_TO_FLOAT       (35)
+#define JE_NODE_CAST_STRING_TO_FLOAT    (36)
+#define JE_NODE_CAST_BOOL_TO_FLOAT      (37)
+#define JE_NODE_CAST_INT_TO_BOOL        (38)
+#define JE_NODE_CAST_STRING_TO_BOOL     (39)
+#define JE_NODE_CAST_FLOAT_TO_BOOL      (40)
 
 #define JE_MEM_ARENA_SIZE               (16 * 1024)
 #define JE_MEM_ARENA_ALIGN              16
