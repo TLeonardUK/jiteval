@@ -233,11 +233,11 @@ const char* je_error_msg(je_context_t* context);
 #include <stdarg.h>
 #include <assert.h>
 
-#define JE_TYPE_INT                     (0)
-#define JE_TYPE_BOOL                    (1)
-#define JE_TYPE_FLOAT                   (2)
-#define JE_TYPE_STRING                  (3)
-#define JE_TYPE_UNSET                   (4)
+#define JE_TYPE_UNSET                   (0)
+#define JE_TYPE_INT                     (1)
+#define JE_TYPE_BOOL                    (2)
+#define JE_TYPE_FLOAT                   (3)
+#define JE_TYPE_STRING                  (4)
 
 #define JE_TOK_IDENTIFIER               (0)
 #define JE_TOK_FLOAT                    (1)
@@ -271,48 +271,87 @@ const char* je_error_msg(je_context_t* context);
 
 // These are generic node types, that will be converted into type-specific ones
 // during semantic analysis.
-#define JE_NODE_LOGICAL_NOT             (0)
-#define JE_NODE_BITWISE_NOT             (1)
-#define JE_NODE_MUL                     (2)
-#define JE_NODE_DIV                     (3)
-#define JE_NODE_MOD                     (4)
-#define JE_NODE_SUB                     (5)
-#define JE_NODE_ADD                     (6)
-#define JE_NODE_LESS                    (7)
-#define JE_NODE_GREATER                 (8)
-#define JE_NODE_LE                      (9)
-#define JE_NODE_GE                      (10)
-#define JE_NODE_EQUAL                   (11)
-#define JE_NODE_NOT_EQUAL               (12)
-#define JE_NODE_BITWISE_AND             (13)
-#define JE_NODE_BITWISE_OR              (14)
-#define JE_NODE_LOGICAL_AND             (15)
-#define JE_NODE_LOGICAL_OR              (16)
-#define JE_NODE_CONSTANT                (17)
-#define JE_NODE_NOOP                    (22) // Any nodes of this type will be pruned at the end of compiling and replaced with their lvalue child
-#define JE_NODE_NEG                     (23)
-#define JE_NODE_POS                     (24)
-#define JE_NODE_CAST_TO_BOOL            (25) 
-#define JE_NODE_CAST_TO_INT             (26)
-#define JE_NODE_CAST_TO_FLOAT           (27)
-#define JE_NODE_CAST_TO_STRING          (28)
+#define JE_NODE_LOGICAL_NOT             (1)
+#define JE_NODE_BITWISE_NOT             (2)
+#define JE_NODE_MUL                     (3)
+#define JE_NODE_DIV                     (4)
+#define JE_NODE_MOD                     (5)
+#define JE_NODE_SUB                     (6)
+#define JE_NODE_ADD                     (7)
+#define JE_NODE_LESS                    (8)
+#define JE_NODE_GREATER                 (9)
+#define JE_NODE_LE                      (10)
+#define JE_NODE_GE                      (11)
+#define JE_NODE_EQUAL                   (12)
+#define JE_NODE_NOT_EQUAL               (13)
+#define JE_NODE_BITWISE_AND             (14)
+#define JE_NODE_BITWISE_OR              (15)
+#define JE_NODE_LOGICAL_AND             (16)
+#define JE_NODE_LOGICAL_OR              (17)
+#define JE_NODE_CONSTANT                (18)
+#define JE_NODE_NEG                     (19)
+#define JE_NODE_POS                     (20)
+#define JE_NODE_CAST_TO_BOOL            (21) 
+#define JE_NODE_CAST_TO_INT             (22)
+#define JE_NODE_CAST_TO_FLOAT           (23)
+#define JE_NODE_CAST_TO_STRING          (24)
 // These are the type-specific versions of the ndoes above.
-#define JE_NODE_FLOAT_LITERAL           (18)
-#define JE_NODE_INT_LITERAL             (19)
-#define JE_NODE_STRING_LITERAL          (20)
-#define JE_NODE_BOOL_LITERAL            (21)
-#define JE_NODE_CAST_INT_TO_STRING      (29)
-#define JE_NODE_CAST_FLOAT_TO_STRING    (30)
-#define JE_NODE_CAST_BOOL_TO_STRING     (31)
-#define JE_NODE_CAST_STRING_TO_INT      (32)
-#define JE_NODE_CAST_FLOAT_TO_INT       (33)
-#define JE_NODE_CAST_BOOL_TO_INT        (34)
-#define JE_NODE_CAST_INT_TO_FLOAT       (35)
-#define JE_NODE_CAST_STRING_TO_FLOAT    (36)
-#define JE_NODE_CAST_BOOL_TO_FLOAT      (37)
-#define JE_NODE_CAST_INT_TO_BOOL        (38)
-#define JE_NODE_CAST_STRING_TO_BOOL     (39)
-#define JE_NODE_CAST_FLOAT_TO_BOOL      (40)
+#define JE_NODE_LOGICAL_NOT_BOOL        (25)
+#define JE_NODE_BITWISE_NOT_INT         (26)
+#define JE_NODE_MUL_FLOAT               (27)
+#define JE_NODE_MUL_INT                 (28)
+#define JE_NODE_DIV_FLOAT               (29)
+#define JE_NODE_DIV_INT                 (30)
+#define JE_NODE_MOD_INT                 (31)
+#define JE_NODE_SUB_FLOAT               (32)
+#define JE_NODE_SUB_INT                 (33)
+#define JE_NODE_ADD_FLOAT               (34)
+#define JE_NODE_ADD_INT                 (35)
+#define JE_NODE_ADD_STRING              (36)
+#define JE_NODE_LESS_FLOAT              (37)
+#define JE_NODE_LESS_INT                (38)
+#define JE_NODE_GREATER_FLOAT           (39)
+#define JE_NODE_GREATER_INT             (40)
+#define JE_NODE_LE_FLOAT                (41)
+#define JE_NODE_LE_INT                  (42)
+#define JE_NODE_GE_FLOAT                (43)
+#define JE_NODE_GE_INT                  (44)
+#define JE_NODE_EQUAL_BOOL              (45)
+#define JE_NODE_EQUAL_INT               (46)
+#define JE_NODE_EQUAL_FLOAT             (47)
+#define JE_NODE_EQUAL_STRING            (48)
+#define JE_NODE_NOT_EQUAL_BOOL          (49)
+#define JE_NODE_NOT_EQUAL_INT           (50)
+#define JE_NODE_NOT_EQUAL_FLOAT         (51)
+#define JE_NODE_NOT_EQUAL_STRING        (52)
+#define JE_NODE_BITWISE_AND_INT         (53)
+#define JE_NODE_BITWISE_OR_INT          (54)
+#define JE_NODE_LOGICAL_AND_BOOL        (55)
+#define JE_NODE_LOGICAL_OR_BOOL         (56)
+#define JE_NODE_CONSTANT_BOOL           (57)
+#define JE_NODE_CONSTANT_INT            (58)
+#define JE_NODE_CONSTANT_FLOAT          (59)
+#define JE_NODE_CONSTANT_STRING         (60)
+#define JE_NODE_NEG_FLOAT               (61)
+#define JE_NODE_POS_FLOAT               (62)
+#define JE_NODE_NEG_INT                 (63)
+#define JE_NODE_POS_INT                 (64)
+#define JE_NODE_FLOAT_LITERAL           (65)
+#define JE_NODE_INT_LITERAL             (66)
+#define JE_NODE_STRING_LITERAL          (67)
+#define JE_NODE_BOOL_LITERAL            (68)
+#define JE_NODE_CAST_INT_TO_STRING      (69)
+#define JE_NODE_CAST_FLOAT_TO_STRING    (70)
+#define JE_NODE_CAST_BOOL_TO_STRING     (71)
+#define JE_NODE_CAST_STRING_TO_INT      (72)
+#define JE_NODE_CAST_FLOAT_TO_INT       (73)
+#define JE_NODE_CAST_BOOL_TO_INT        (74)
+#define JE_NODE_CAST_INT_TO_FLOAT       (75)
+#define JE_NODE_CAST_STRING_TO_FLOAT    (76)
+#define JE_NODE_CAST_BOOL_TO_FLOAT      (77)
+#define JE_NODE_CAST_INT_TO_BOOL        (78)
+#define JE_NODE_CAST_STRING_TO_BOOL     (79)
+#define JE_NODE_CAST_FLOAT_TO_BOOL      (80)
 
 #define JE_MEM_ARENA_SIZE               (16 * 1024)
 #define JE_MEM_ARENA_ALIGN              16
@@ -345,26 +384,33 @@ typedef struct je_value_t {
 } je_value_t;
 
 typedef struct je_ast_node_t {
-    int                     type;
+    int                     type : 8;
+    int                     return_type : 7;
+    int                     is_constant : 1;
     struct je_ast_node_t*   children[2];
     je_value_t              value;
-    int                     return_type;
+    je_value_t*             constant;
 } je_ast_node_t;
 
 typedef struct je_context_t {
-    char*           mem_arena;          // Block of memory that all dynamically allocated memory is stored in. Used as a stack allocator.
-    size_t          mem_arena_offset;   // Next locations in the mem_arena to allocate from.
-    char*           source;             // Pointer to source code string
-    char*           read_ptr;           // Read pointer into source string
-    char*           rewind_read_ptr;    // Pointer to point in token stream we can rewind to with je_rewind_token_stream
-    je_value_t*     constant_head;      // Head of the constant linked list.
-    je_value_t      result;             // Result of the last evaluation call.
-    int             error_code;         // Last error that occured in the context.
-    char            error_msg[512];     // Error message from the last failing call.
-    je_ast_node_t*  ast_root;           // Root node in the ast graph.
-    int             jit_compiled;       // If the compiled expression is jit compiled.
-    int             compiled;           // If this context has been compiled.
+    char*           mem_arena;                      // Block of memory that all dynamically allocated memory is stored in. Used as a stack allocator.
+    size_t          mem_arena_offset;               // Next locations in the mem_arena to allocate from.
+    char*           transient_mem_arena;            // Block of memory that all transient allocations using during evaluation is stored in. Used as a stack allocator.
+    size_t          transient_mem_arena_offset;     // Next locations in the transient_mem_arena_offset to allocate from.
+    char*           source;                         // Pointer to source code string
+    char*           read_ptr;                       // Read pointer into source string
+    char*           rewind_read_ptr;                // Pointer to point in token stream we can rewind to with je_rewind_token_stream
+    je_value_t*     constant_head;                  // Head of the constant linked list.
+    je_value_t      result;                         // Result of the last evaluation call.
+    int             error_code;                     // Last error that occured in the context.
+    char            error_msg[512];                 // Error message from the last failing call.
+    je_ast_node_t*  ast_root;                       // Root node in the ast graph.
+    int             jit_compiled;                   // If the compiled expression is jit compiled.
+    int             compiled;                       // If this context has been compiled.
 } je_context_t;
+
+int je_parse(je_context_t* context, je_ast_node_t** node, int precedence);
+int je_eval_slow(je_context_t* context, je_ast_node_t* node, je_value_t* result);
 
 int je_store_error(je_context_t* context, int error_code, const char* error_msg, ...) {  
     if (error_msg != NULL) {
@@ -391,6 +437,22 @@ int je_store_error(je_context_t* context, int error_code, const char* error_msg,
     }
     context->error_code = error_code;
     return error_code;
+}
+
+int je_alloc_transient(je_context_t* context, size_t size, char** ptr) {
+    int align_padding = JE_MEM_ARENA_ALIGN - (((size_t)context->transient_mem_arena + context->transient_mem_arena_offset) % JE_MEM_ARENA_ALIGN);
+    if (align_padding == JE_MEM_ARENA_ALIGN) {
+        align_padding = 0;
+    }
+    size_t remaining_space = JE_MEM_ARENA_SIZE - context->transient_mem_arena_offset;
+    if (remaining_space < size + JE_MEM_ARENA_ALIGN) {
+        je_store_error(context, JE_RESULT_OOM, NULL);
+        return context->error_code;
+    }
+    *ptr = context->transient_mem_arena + context->transient_mem_arena_offset + align_padding;
+    context->transient_mem_arena_offset += size + align_padding;
+    assert(((size_t)*ptr % JE_MEM_ARENA_ALIGN) == 0);
+    return JE_RESULT_SUCCESS;
 }
 
 int je_alloc(je_context_t* context, size_t size, char** ptr) {
@@ -444,10 +506,105 @@ int je_alloc_ast_node(je_context_t* context, je_ast_node_t** node) {
 
 const char* je_type_name(int type) {
     switch (type) {
-    case JE_TYPE_STRING:    return "string";
-    case JE_TYPE_INT:       return "int";
-    case JE_TYPE_FLOAT:     return "float";
-    case JE_TYPE_BOOL:      return "bool";
+        case JE_TYPE_UNSET:     return "unset";
+        case JE_TYPE_STRING:    return "string";
+        case JE_TYPE_INT:       return "int";
+        case JE_TYPE_FLOAT:     return "float";
+        case JE_TYPE_BOOL:      return "bool";
+        default: {
+            assert(0);
+            return "unkown";
+        }
+    }
+    return "";
+}
+
+const char* je_node_name(int type) {
+    switch (type) {
+        case JE_NODE_LOGICAL_NOT:           return "logical_not";
+        case JE_NODE_BITWISE_NOT:           return "bitwise_not";
+        case JE_NODE_MUL:                   return "mul";
+        case JE_NODE_DIV:                   return "div";
+        case JE_NODE_MOD:                   return "mod";
+        case JE_NODE_SUB:                   return "sub";
+        case JE_NODE_ADD:                   return "add";
+        case JE_NODE_LESS:                  return "less";
+        case JE_NODE_GREATER:               return "greater";
+        case JE_NODE_LE:                    return "less_equal";
+        case JE_NODE_GE:                    return "greater_equal";
+        case JE_NODE_EQUAL:                 return "equal";
+        case JE_NODE_NOT_EQUAL:             return "not_equal";
+        case JE_NODE_BITWISE_AND:           return "bitwise_and";
+        case JE_NODE_BITWISE_OR:            return "bitwise_or";
+        case JE_NODE_LOGICAL_AND:           return "logical_and";
+        case JE_NODE_LOGICAL_OR:            return "logical_or";
+        case JE_NODE_CONSTANT:              return "constant";
+        case JE_NODE_NEG:                   return "neg";
+        case JE_NODE_POS:                   return "pos";
+        case JE_NODE_CAST_TO_BOOL:          return "cast_to_bool";
+        case JE_NODE_CAST_TO_INT:           return "cast_to_int";
+        case JE_NODE_CAST_TO_FLOAT:         return "cast_to_float";
+        case JE_NODE_CAST_TO_STRING:        return "cast_to_string";
+        case JE_NODE_LOGICAL_NOT_BOOL:      return "logical_not_bool";
+        case JE_NODE_BITWISE_NOT_INT:       return "bitwise_not_int";
+        case JE_NODE_MUL_FLOAT:             return "mul_float";
+        case JE_NODE_MUL_INT:               return "mul_int";
+        case JE_NODE_DIV_FLOAT:             return "div_float";
+        case JE_NODE_DIV_INT:               return "div_int";
+        case JE_NODE_MOD_INT:               return "mod_int";
+        case JE_NODE_SUB_FLOAT:             return "sub_float";
+        case JE_NODE_SUB_INT:               return "sub_int";
+        case JE_NODE_ADD_FLOAT:             return "add_float";
+        case JE_NODE_ADD_INT:               return "add_int";
+        case JE_NODE_ADD_STRING:            return "add_string";
+        case JE_NODE_LESS_FLOAT:            return "less_float";
+        case JE_NODE_LESS_INT:              return "less_int";
+        case JE_NODE_GREATER_FLOAT:         return "greater_float";
+        case JE_NODE_GREATER_INT:           return "greater_int";
+        case JE_NODE_LE_FLOAT:              return "less_equal_float";
+        case JE_NODE_LE_INT:                return "less_equal_int";
+        case JE_NODE_GE_FLOAT:              return "greater_equal_float";
+        case JE_NODE_GE_INT:                return "greater_equal_int";
+        case JE_NODE_EQUAL_BOOL:            return "equal_bool";
+        case JE_NODE_EQUAL_INT:             return "equal_int";
+        case JE_NODE_EQUAL_FLOAT:           return "equal_float";
+        case JE_NODE_EQUAL_STRING:          return "equal_string";
+        case JE_NODE_NOT_EQUAL_BOOL:        return "not_equal_bool";
+        case JE_NODE_NOT_EQUAL_INT:         return "not_equal_int";
+        case JE_NODE_NOT_EQUAL_FLOAT:       return "not_equal_float";
+        case JE_NODE_NOT_EQUAL_STRING:      return "not_equal_string";
+        case JE_NODE_BITWISE_AND_INT:       return "bitwise_and_int";
+        case JE_NODE_BITWISE_OR_INT:        return "bitwise_or_int";
+        case JE_NODE_LOGICAL_AND_BOOL:      return "logical_and_bool";
+        case JE_NODE_LOGICAL_OR_BOOL:       return "logical_or_bool";
+        case JE_NODE_CONSTANT_BOOL:         return "constant_bool";
+        case JE_NODE_CONSTANT_INT:          return "constant_int";
+        case JE_NODE_CONSTANT_FLOAT:        return "constant_float";
+        case JE_NODE_CONSTANT_STRING:       return "constant_string";
+        case JE_NODE_NEG_FLOAT:             return "neg_float";
+        case JE_NODE_POS_FLOAT:             return "pos_float";
+        case JE_NODE_NEG_INT:               return "neg_int";
+        case JE_NODE_POS_INT:               return "pos_int";
+        case JE_NODE_FLOAT_LITERAL:         return "float_literal";
+        case JE_NODE_INT_LITERAL:           return "int_literal";
+        case JE_NODE_STRING_LITERAL:        return "string_literal";
+        case JE_NODE_BOOL_LITERAL:          return "bool_literal";
+        case JE_NODE_CAST_INT_TO_STRING:    return "cast_int_to_string";
+        case JE_NODE_CAST_FLOAT_TO_STRING:  return "cast_float_to_string";
+        case JE_NODE_CAST_BOOL_TO_STRING:   return "cast_bool_to_string";
+        case JE_NODE_CAST_STRING_TO_INT:    return "cast_string_to_int";
+        case JE_NODE_CAST_FLOAT_TO_INT:     return "cast_float_to_int";
+        case JE_NODE_CAST_BOOL_TO_INT:      return "cast_bool_to_int";
+        case JE_NODE_CAST_INT_TO_FLOAT:     return "cast_int_to_float";
+        case JE_NODE_CAST_STRING_TO_FLOAT:  return "cast_string_to_float";
+        case JE_NODE_CAST_BOOL_TO_FLOAT:    return "cast_bool_to_float";
+        case JE_NODE_CAST_INT_TO_BOOL:      return "cast_int_to_bool";
+        case JE_NODE_CAST_STRING_TO_BOOL:   return "cast_string_to_bool";
+        case JE_NODE_CAST_FLOAT_TO_BOOL:    return "cast_float_to_bool";
+        default: {
+            assert(0); 
+            return "unkown";
+        }
     }
     return "";
 }
@@ -605,6 +762,10 @@ int je_new_context(je_context_t* context) {
     memset(context, 0, sizeof(struct je_context_t));
     context->mem_arena = malloc(JE_MEM_ARENA_SIZE);
     if (context->mem_arena == NULL) {
+        return JE_RESULT_OOM;
+    }
+    context->transient_mem_arena = malloc(JE_MEM_ARENA_SIZE);
+    if (context->transient_mem_arena == NULL) {
         return JE_RESULT_OOM;
     }
     return JE_RESULT_SUCCESS;
@@ -982,8 +1143,6 @@ void je_rewind_token_stream(je_context_t* context) {
     context->read_ptr = context->rewind_read_ptr;
 }
 
-int je_parse(je_context_t* context, je_ast_node_t** node, int precedence);
-
 int je_parse_term(je_context_t* context, je_ast_node_t** node) {
 
     je_token_t tok;
@@ -1135,8 +1294,7 @@ int je_parse(je_context_t* context, je_ast_node_t** node, int precedence) {
             context->read_ptr = start_read_ptr;
             *node = lvalue;
             return JE_RESULT_SUCCESS;
-        }
-        else if (ret < 0) {
+        } else if (ret < 0) {
             return ret;
         }
 
@@ -1145,17 +1303,13 @@ int je_parse(je_context_t* context, je_ast_node_t** node, int precedence) {
         // Precendence 1
         if (tok.type == JE_TOK_OP_NOT && precedence == 1) {
             nodeType = JE_NODE_LOGICAL_NOT;
-        }
-        else if (tok.type == JE_TOK_OP_BITWISE_NOT && precedence == 1) {
+        } else if (tok.type == JE_TOK_OP_BITWISE_NOT && precedence == 1) {
             nodeType = JE_NODE_BITWISE_NOT;
-        }
-        else if (tok.type == JE_TOK_OP_ADD && is_unary && precedence == 1) {
+        } else if (tok.type == JE_TOK_OP_ADD && is_unary && precedence == 1) {
             nodeType = JE_NODE_POS;
-        }
-        else if (tok.type == JE_TOK_OP_SUB && is_unary && precedence == 1) {
+        } else if (tok.type == JE_TOK_OP_SUB && is_unary && precedence == 1) {
             nodeType = JE_NODE_NEG;
-        }
-        else if (tok.type == JE_TOK_OP_PARENTHESIS_OPEN && is_unary && precedence == 1) {
+        } else if (tok.type == JE_TOK_OP_PARENTHESIS_OPEN && is_unary && precedence == 1) {
             ret = je_read_token(context, &tok);
             if (ret < 0) {
                 return ret;
@@ -1163,17 +1317,13 @@ int je_parse(je_context_t* context, je_ast_node_t** node, int precedence) {
 
             if (tok.type == JE_TOK_OP_KEYWORD_BOOL) {
                 nodeType = JE_NODE_CAST_TO_BOOL;
-            }
-            else if (tok.type == JE_TOK_OP_KEYWORD_INT) {
+            } else if (tok.type == JE_TOK_OP_KEYWORD_INT) {
                 nodeType = JE_NODE_CAST_TO_INT;
-            }
-            else if (tok.type == JE_TOK_OP_KEYWORD_FLOAT) {
+            } else if (tok.type == JE_TOK_OP_KEYWORD_FLOAT) {
                 nodeType = JE_NODE_CAST_TO_FLOAT;
-            }
-            else if (tok.type == JE_TOK_OP_KEYWORD_STRING) {
+            } else if (tok.type == JE_TOK_OP_KEYWORD_STRING) {
                 nodeType = JE_NODE_CAST_TO_STRING;
-            }
-            else {
+            } else {
                 return je_store_error(context, JE_RESULT_UNEXPECTED_TOKEN, "Unexpected token, expected bool, int, float or string keyword\n\t%s", tok.source_ptr);
             }
 
@@ -1189,38 +1339,31 @@ int je_parse(je_context_t* context, je_ast_node_t** node, int precedence) {
         // Precendence 2
         else if (tok.type == JE_TOK_OP_MUL && precedence == 2) {
             nodeType = JE_NODE_MUL;
-        }
-        else if (tok.type == JE_TOK_OP_DIV && precedence == 2) {
+        } else if (tok.type == JE_TOK_OP_DIV && precedence == 2) {
             nodeType = JE_NODE_DIV;
-        }
-        else if (tok.type == JE_TOK_OP_MOD && precedence == 2) {
+        } else if (tok.type == JE_TOK_OP_MOD && precedence == 2) {
             nodeType = JE_NODE_MOD;
         }
         // Precedence 3
         else if (tok.type == JE_TOK_OP_SUB && precedence == 3) {
             nodeType = JE_NODE_SUB;
-        }
-        else if (tok.type == JE_TOK_OP_ADD && precedence == 3) {
+        } else if (tok.type == JE_TOK_OP_ADD && precedence == 3) {
             nodeType = JE_NODE_ADD;
         }
         // Precedence 4
         else if (tok.type == JE_TOK_OP_LESS && precedence == 4) {
             nodeType = JE_NODE_LESS;
-        }
-        else if (tok.type == JE_TOK_OP_GREATER && precedence == 4) {
+        } else if (tok.type == JE_TOK_OP_GREATER && precedence == 4) {
             nodeType = JE_NODE_GREATER;
-        }
-        else if (tok.type == JE_TOK_OP_LE && precedence == 4) {
+        } else if (tok.type == JE_TOK_OP_LE && precedence == 4) {
             nodeType = JE_NODE_LE;
-        }
-        else if (tok.type == JE_TOK_OP_GE && precedence == 4) {
+        } else if (tok.type == JE_TOK_OP_GE && precedence == 4) {
             nodeType = JE_NODE_GE;
         }
         // Precedence 5
         else if (tok.type == JE_TOK_OP_EQUAL && precedence == 5) {
             nodeType = JE_NODE_EQUAL;
-        }
-        else if (tok.type == JE_TOK_OP_NOT_EQUAL && precedence == 5) {
+        } else if (tok.type == JE_TOK_OP_NOT_EQUAL && precedence == 5) {
             nodeType = JE_NODE_NOT_EQUAL;
         }
         // Precedence 6
@@ -1284,9 +1427,9 @@ int je_type_balance(je_ast_node_t* lvalue, je_ast_node_t* rvalue) {
 
 int je_insert_cast(je_context_t* context, je_ast_node_t** node, int type) {
     int op_type = 0;
-    switch ((*node)->return_type) {
+    switch (type) {
         case JE_TYPE_STRING: {
-            switch (type) {
+            switch ((*node)->return_type) {
                 case JE_TYPE_INT:       op_type = JE_NODE_CAST_INT_TO_STRING; break;
                 case JE_TYPE_STRING:    return JE_RESULT_SUCCESS;
                 case JE_TYPE_FLOAT:     op_type = JE_NODE_CAST_FLOAT_TO_STRING; break;
@@ -1295,7 +1438,7 @@ int je_insert_cast(je_context_t* context, je_ast_node_t** node, int type) {
             break;
         }
         case JE_TYPE_INT: {
-            switch (type) {
+            switch ((*node)->return_type) {
                 case JE_TYPE_INT:       return JE_RESULT_SUCCESS;
                 case JE_TYPE_STRING:    op_type = JE_NODE_CAST_STRING_TO_INT; break;
                 case JE_TYPE_FLOAT:     op_type = JE_NODE_CAST_FLOAT_TO_INT; break;
@@ -1304,7 +1447,7 @@ int je_insert_cast(je_context_t* context, je_ast_node_t** node, int type) {
             break;
         }
         case JE_TYPE_FLOAT: {
-            switch (type) {
+            switch ((*node)->return_type) {
                 case JE_TYPE_INT:       op_type = JE_NODE_CAST_INT_TO_FLOAT; break;
                 case JE_TYPE_STRING:    op_type = JE_NODE_CAST_STRING_TO_FLOAT; break;
                 case JE_TYPE_FLOAT:     return JE_RESULT_SUCCESS;
@@ -1313,7 +1456,7 @@ int je_insert_cast(je_context_t* context, je_ast_node_t** node, int type) {
             break;
         }
         case JE_TYPE_BOOL: {
-            switch (type) {
+            switch ((*node)->return_type) {
                 case JE_TYPE_INT:       op_type = JE_NODE_CAST_INT_TO_BOOL; break;
                 case JE_TYPE_STRING:    op_type = JE_NODE_CAST_STRING_TO_BOOL; break;
                 case JE_TYPE_FLOAT:     op_type = JE_NODE_CAST_FLOAT_TO_BOOL; break;
@@ -1331,7 +1474,7 @@ int je_insert_cast(je_context_t* context, je_ast_node_t** node, int type) {
 
     cast_node->type = op_type;
     cast_node->return_type = type;
-    cast_node->children[0] = *node;
+    cast_node->children[1] = *node; // casts are consider unary so we they go in the rvalue
     *node = cast_node;
 
     return JE_RESULT_SUCCESS;
@@ -1394,6 +1537,36 @@ int je_implicit_conversion(je_context_t* context, je_ast_node_t* node) {
     return JE_RESULT_SUCCESS;
 }
 
+void je_print_ast(je_ast_node_t* node, int depth, int childIndex) {
+    for (int i = 0; i < depth; i++) {
+        printf("\t");
+    }
+    printf("[%i] ", childIndex);
+    if (node->return_type != JE_TYPE_UNSET) {
+        printf("[%s] ", je_type_name(node->return_type));
+    }
+    if (node->is_constant) {
+        printf("const ");
+    }
+    switch (node->type) {
+        case JE_NODE_CONSTANT_BOOL:     printf("%s (%i)", je_node_name(node->type), node->constant->bool_value); break;
+        case JE_NODE_CONSTANT_STRING:   printf("%s (%s)", je_node_name(node->type), node->constant->string_value); break;
+        case JE_NODE_CONSTANT_FLOAT:    printf("%s (%f)", je_node_name(node->type), node->constant->float_value); break;
+        case JE_NODE_CONSTANT_INT:      printf("%s (%i)", je_node_name(node->type), node->constant->int_value); break;
+        case JE_NODE_BOOL_LITERAL:      printf("%s (%i)", je_node_name(node->type), node->value.bool_value); break;
+        case JE_NODE_STRING_LITERAL:    printf("%s (%s)", je_node_name(node->type), node->value.string_value); break;
+        case JE_NODE_FLOAT_LITERAL:     printf("%s (%f)", je_node_name(node->type), node->value.float_value); break;
+        case JE_NODE_INT_LITERAL:       printf("%s (%i)", je_node_name(node->type), node->value.int_value); break;
+        default:                        printf("%s", je_node_name(node->type)); break;
+    }
+    printf("\n");
+    for (int i = 0; i < 2; i++) {
+        if (node->children[i] != NULL) {
+            je_print_ast(node->children[i], depth + 1, i);
+        }
+    }
+}
+
 int je_semant(je_context_t* context, je_ast_node_t** node_ptr) {
     je_ast_node_t* node = *node_ptr;
     int ret = 0;
@@ -1419,79 +1592,82 @@ int je_semant(je_context_t* context, je_ast_node_t** node_ptr) {
             if (constant == NULL) {
                 return je_store_error(context, JE_RESULT_UNDEFINED_IDENTIFIER, "Undefined identifier '%s'", node->value.string_value);
             }
+            node->constant = constant;
             node->return_type = constant->type;
+            switch (node->return_type) {
+                case JE_TYPE_STRING:    node->type = JE_NODE_CONSTANT_STRING;   break;
+                case JE_TYPE_FLOAT:     node->type = JE_NODE_CONSTANT_FLOAT;    break;
+                case JE_TYPE_INT:       node->type = JE_NODE_CONSTANT_INT;      break;
+                case JE_TYPE_BOOL:      node->type = JE_NODE_CONSTANT_BOOL;     break;
+            }
             break;
         }
-        case JE_NODE_CAST_TO_FLOAT: 
         case JE_NODE_FLOAT_LITERAL: {
             node->return_type = JE_TYPE_FLOAT;
             break;
         }
-        case JE_NODE_CAST_TO_INT: 
         case JE_NODE_INT_LITERAL: {
             node->return_type = JE_TYPE_INT;
             break;
         }
-        case JE_NODE_CAST_TO_STRING: 
         case JE_NODE_STRING_LITERAL: {
             node->return_type = JE_TYPE_STRING;
             break;
         }
-        case JE_NODE_CAST_TO_BOOL: 
         case JE_NODE_BOOL_LITERAL: {
             node->return_type = JE_TYPE_BOOL;
             break;
         }
-        default: {
-            node->return_type = je_type_balance(node->children[0], node->children[1]);
-            break;
-        }
-    }
-
-    // Replace the generic CAST_TO_X with more specific ones now we know the child return types.
-    switch (node->type) {
         case JE_NODE_CAST_TO_FLOAT: {
-            switch (node->children[0]->return_type) {
+            switch (node->children[1]->return_type) {
                 case JE_TYPE_STRING:    node->type = JE_NODE_CAST_STRING_TO_FLOAT; break;
-                case JE_TYPE_FLOAT:     node->type = JE_NODE_NOOP; break;
+                case JE_TYPE_FLOAT:     *node_ptr = node->children[0]; break; // Replace node with lvalue as this is a noop.
                 case JE_TYPE_INT:       node->type = JE_NODE_CAST_INT_TO_FLOAT; break;
                 case JE_TYPE_BOOL:      node->type = JE_NODE_CAST_BOOL_TO_FLOAT; break;
             }
+            node->return_type = JE_TYPE_FLOAT;
             break;
         }
         case JE_NODE_CAST_TO_INT: {
-            switch (node->children[0]->return_type) {
+            switch (node->children[1]->return_type) {
                 case JE_TYPE_STRING:    node->type = JE_NODE_CAST_STRING_TO_INT; break;
                 case JE_TYPE_FLOAT:     node->type = JE_NODE_CAST_FLOAT_TO_INT; break;
-                case JE_TYPE_INT:       node->type = JE_NODE_NOOP; break;
+                case JE_TYPE_INT:       *node_ptr = node->children[0]; break; // Replace node with lvalue as this is a noop.
                 case JE_TYPE_BOOL:      node->type = JE_NODE_CAST_BOOL_TO_INT; break;
             }
+            node->return_type = JE_TYPE_INT;
             break;
         }
         case JE_NODE_CAST_TO_STRING: {
-            switch (node->children[0]->return_type) {
-                case JE_TYPE_STRING:    node->type = JE_NODE_NOOP; break;
+            switch (node->children[1]->return_type) {
+                case JE_TYPE_STRING:    *node_ptr = node->children[0]; break; // Replace node with lvalue as this is a noop.
                 case JE_TYPE_FLOAT:     node->type = JE_NODE_CAST_FLOAT_TO_STRING; break;
                 case JE_TYPE_INT:       node->type = JE_NODE_CAST_INT_TO_STRING; break;
                 case JE_TYPE_BOOL:      node->type = JE_NODE_CAST_BOOL_TO_STRING; break;
             }
+            node->return_type = JE_TYPE_STRING;
             break;
         }
         case JE_NODE_CAST_TO_BOOL: {
-            switch (node->children[0]->return_type) {
+            switch (node->children[1]->return_type) {
                 case JE_TYPE_STRING:    node->type = JE_NODE_CAST_STRING_TO_BOOL; break;
                 case JE_TYPE_FLOAT:     node->type = JE_NODE_CAST_FLOAT_TO_BOOL; break;
                 case JE_TYPE_INT:       node->type = JE_NODE_CAST_INT_TO_BOOL; break;
-                case JE_TYPE_BOOL:      node->type = JE_NODE_NOOP; break;
+                case JE_TYPE_BOOL:      *node_ptr = node->children[0]; break; // Replace node with lvalue as this is a noop.
             }
+            node->return_type = JE_TYPE_BOOL;
+            break;
+        }  
+        case JE_NODE_LOGICAL_AND:
+        case JE_NODE_LOGICAL_OR:
+        case JE_NODE_LOGICAL_NOT: {
+            node->return_type = JE_TYPE_BOOL;
+            break;
+        }      
+        default: {
+            node->return_type = je_type_balance(node->children[0], node->children[1]);
             break;
         }
-    }
-
-    // If this node ended up as a noop, then replace it with its lvalue child.
-    if (node->type == JE_NODE_NOOP) {
-        *node_ptr = node->children[0];
-        return JE_RESULT_SUCCESS;
     }
 
     // Add implicit conversion nodes if required.
@@ -1500,87 +1676,196 @@ int je_semant(je_context_t* context, je_ast_node_t** node_ptr) {
         return ret;
     }
 
-    // Check the operations are valid.
+    // Check the operations are valid and convert to type specific operations.
     switch (node->type) {
+        case JE_NODE_POS: {
+            if (node->return_type == JE_TYPE_FLOAT) {
+                node->type = JE_NODE_POS_FLOAT;
+            } else if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_POS_INT;
+            } else {
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "unary + can only be used with float or int types");
+            }
+            break;
+        }
+        case JE_NODE_NEG: {
+            if (node->return_type == JE_TYPE_FLOAT) {
+                node->type = JE_NODE_NEG_FLOAT;
+            } else if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_NEG_INT;
+            } else {
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "unary - can only be used with float or int types");
+            }
+            break;
+        }
         case JE_NODE_SUB: {
-            if (node->return_type != JE_TOK_FLOAT && node->return_type != JE_TOK_INT) {
+            if (node->return_type == JE_TYPE_FLOAT) {
+                node->type = JE_NODE_SUB_FLOAT;
+            } else if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_SUB_INT;
+            } else {
                 return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "- can only be used with float or int types");
             }
             break;
         }
         case JE_NODE_MUL: {
-            if (node->return_type != JE_TOK_FLOAT && node->return_type != JE_TOK_INT) {
+            if (node->return_type == JE_TYPE_FLOAT) {
+                node->type = JE_NODE_MUL_FLOAT;
+            } else if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_MUL_INT;
+            } else {
                 return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "* can only be used with float or int types");
             }
             break;
         }
         case JE_NODE_ADD: {
-            if (node->return_type != JE_TOK_FLOAT && node->return_type != JE_TOK_INT && node->return_type != JE_TOK_STRING) {
+            if (node->return_type == JE_TYPE_FLOAT) {
+                node->type = JE_NODE_ADD_FLOAT;
+            } else if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_ADD_INT;
+            } else if (node->return_type == JE_TYPE_STRING) {
+                node->type = JE_NODE_ADD_STRING;
+            } else {
                 return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "+ can only be used with float, int or string types");
             }
             break;
         }
         case JE_NODE_DIV: {
-            if (node->return_type != JE_TOK_FLOAT && node->return_type != JE_TOK_INT) {
+            if (node->return_type == JE_TYPE_FLOAT) {
+                node->type = JE_NODE_DIV_FLOAT;
+            } else if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_DIV_INT;
+            } else {
                 return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "/ can only be used with float or int types");
             }
             break;
         }
         case JE_NODE_MOD: {
-            if (node->return_type != JE_TOK_INT) {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "% can only be used with int types");
-            }
-            break;
-        }
-        case JE_NODE_LOGICAL_NOT: {
-            if (node->return_type != JE_TOK_BOOL) {
+            if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_MOD_INT;
+            } else {
                 return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "% can only be used with int types");
             }
             break;
         }
         case JE_NODE_BITWISE_NOT: {
-            if (node->return_type != JE_TOK_INT) {
+            if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_BITWISE_NOT_INT;
+            } else {
                 return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "~ can only be used with int types");
             }
             break;
         }
         case JE_NODE_LESS: {
-            if (node->return_type != JE_TOK_INT && node->return_type != JE_TOK_FLOAT) {
+            if (node->return_type == JE_TYPE_FLOAT) {
+                node->type = JE_NODE_LESS_FLOAT;
+            } else if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_LESS_INT;
+            } else {
                 return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "< can only be used with bool types");
             }
+            node->return_type = JE_TYPE_BOOL;
+            break;
+        }
+        case JE_NODE_GREATER: {
+            if (node->return_type == JE_TYPE_FLOAT) {
+                node->type = JE_NODE_GREATER_FLOAT;
+            } else if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_GREATER_INT;
+            } else {
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, ">= can only be used with bool types");
+            }
+            node->return_type = JE_TYPE_BOOL;
             break;
         }
         case JE_NODE_GE: {
-            if (node->return_type != JE_TOK_INT && node->return_type != JE_TOK_FLOAT) {
+            if (node->return_type == JE_TYPE_FLOAT) {
+                node->type = JE_NODE_GE_FLOAT;
+            } else if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_GE_INT;
+            } else {
                 return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, ">= can only be used with bool types");
             }
+            node->return_type = JE_TYPE_BOOL;
             break;
         }
-        case JE_NODE_NOT_EQUAL:
+        case JE_NODE_LE: {
+            if (node->return_type == JE_TYPE_FLOAT) {
+                node->type = JE_NODE_LE_FLOAT;
+            } else if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_LE_INT;
+            } else {
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "<= can only be used with bool types");
+            }
+            node->return_type = JE_TYPE_BOOL;
+            break;
+        }
+        case JE_NODE_NOT_EQUAL: {
+            if (node->return_type == JE_TYPE_FLOAT) {
+                node->type = JE_NODE_NOT_EQUAL_FLOAT;
+            } else if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_NOT_EQUAL_INT;
+            } else if (node->return_type == JE_TYPE_STRING) {
+                node->type = JE_NODE_NOT_EQUAL_STRING;
+            } else if (node->return_type == JE_TYPE_BOOL) {
+                node->type = JE_NODE_NOT_EQUAL_BOOL;
+            } else {
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "!= can only be used with bool types");
+            }
+            node->return_type = JE_TYPE_BOOL;
+            break;
+        }
         case JE_NODE_EQUAL: {
-            // Valid for everthing
+            if (node->return_type == JE_TYPE_FLOAT) {
+                node->type = JE_NODE_EQUAL_FLOAT;
+            } else if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_EQUAL_INT;
+            } else if (node->return_type == JE_TYPE_STRING) {
+                node->type = JE_NODE_EQUAL_STRING;
+            } else if (node->return_type == JE_TYPE_BOOL) {
+                node->type = JE_NODE_EQUAL_BOOL;
+            } else {
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "!= can only be used with bool types");
+            }
+            node->return_type = JE_TYPE_BOOL;
             break;
         }
         case JE_NODE_BITWISE_AND: {
-            if (node->return_type != JE_TOK_INT) {
+            if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_BITWISE_AND_INT;
+            } else {
                 return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "& can only be used with int types");
             }
             break;
         }
         case JE_NODE_BITWISE_OR: {
-            if (node->return_type != JE_TOK_INT) {
+            if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_BITWISE_OR_INT;
+            } else {
                 return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "| can only be used with int types");
             }
             break;
         }
+        case JE_NODE_LOGICAL_NOT: {
+            if (node->return_type == JE_TYPE_BOOL) {
+                node->type = JE_NODE_LOGICAL_NOT_BOOL;
+            } else {
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "! can only be used with bool types");
+            }
+            break;
+        }
         case JE_NODE_LOGICAL_AND: {
-            if (node->return_type != JE_TOK_BOOL) {
+            if (node->return_type == JE_TYPE_BOOL) {
+                node->type = JE_NODE_LOGICAL_AND_BOOL;
+            } else {
                 return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "&& can only be used with int types");
             }
             break;
         }
         case JE_NODE_LOGICAL_OR: {
-            if (node->return_type != JE_TOK_BOOL) {
+            if (node->return_type == JE_TYPE_BOOL) {
+                node->type = JE_NODE_LOGICAL_OR_BOOL;
+            } else {
                 return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "|| can only be used with int types");
             }
             break;
@@ -1590,8 +1875,59 @@ int je_semant(je_context_t* context, je_ast_node_t** node_ptr) {
     return JE_RESULT_SUCCESS;
 }
 
-int je_fold_constants(je_context_t* context, je_ast_node_t* node) {
-    // TODO
+void je_mark_nodes_constant(je_ast_node_t* node) {
+    node->is_constant = 1;
+
+    for (int i = 0; i < 2; i++) {
+        if (node->children[i] != NULL) {
+            je_mark_nodes_constant(node->children[i]);
+            if (!node->children[i]->is_constant) {
+                node->is_constant = 0;
+            }
+        }
+    }
+
+    // Values bound by the user are not const (despite being called constants ...)
+    switch (node->type) {
+        case JE_NODE_CONSTANT_BOOL:         
+        case JE_NODE_CONSTANT_INT:          
+        case JE_NODE_CONSTANT_FLOAT:        
+        case JE_NODE_CONSTANT_STRING: {
+            node->is_constant = 0;
+            break;
+        }
+    }
+}
+
+void je_fold_node_constants(je_context_t* context, je_ast_node_t** node) {
+    if ((*node)->is_constant) {
+        // Evaluate result and replace node with a constant value.
+        context->transient_mem_arena_offset = 0;
+        int ret = je_eval_slow(context, *node, &(*node)->value);
+        if (ret == JE_RESULT_SUCCESS) {
+            for (int i = 0; i < 2; i++) {
+                (*node)->children[i] = NULL;
+            }
+            switch ((*node)->value.type) {
+                case JE_TYPE_BOOL:      (*node)->type = JE_NODE_BOOL_LITERAL;   break;
+                case JE_TYPE_FLOAT:     (*node)->type = JE_NODE_FLOAT_LITERAL;  break;
+                case JE_TYPE_STRING:    (*node)->type = JE_NODE_STRING_LITERAL; break;
+                case JE_TYPE_INT:       (*node)->type = JE_NODE_INT_LITERAL;    break;
+            }
+            return;
+        }
+    }
+
+    for (int i = 0; i < 2; i++) {
+        if ((*node)->children[i] != NULL) {
+            je_fold_node_constants(context, &(*node)->children[i]);
+        }
+    }
+}
+
+int je_fold_constants(je_context_t* context) {
+    je_mark_nodes_constant(context->ast_root);    
+    je_fold_node_constants(context, &context->ast_root);
     return JE_RESULT_SUCCESS;
 }
 
@@ -1617,50 +1953,384 @@ int je_compile(je_context_t* context, const char* source) {
         return ret;
     }
 
+    // Make sure we actually parsed something valid.
+    if (context->ast_root == NULL) {
+        return je_store_error(context, JE_RESULT_EMPTY_EXPRESSION, NULL);
+    }
+    if (context->read_ptr[0] != '\0') {
+        return je_store_error(context, JE_RESULT_UNEXPECTED_TRAILING_EXPRESSION, "Unexpected trailing expression\n\t%s", context->read_ptr);
+    }
+
+    printf("==== PARSE ===\n");
+    je_print_ast(context->ast_root, 0, 0);
+
     // Semantically analyze the ast to make sure its valid and insert implicit conversions/etc where required.
     ret = je_semant(context, &context->ast_root);
     if (ret < 0) {
         return ret;
     }
 
+    printf("==== SEMANT ===\n");
+    je_print_ast(context->ast_root, 0, 0);
+
     // Fold any constant operations for simple optimization.
-    ret = je_fold_constants(context, context->ast_root);
+    ret = je_fold_constants(context);
     if (ret < 0) {
         return ret;
     }
 
-    // Make sure we actually parsed something valid.
-    if (context->ast_root == NULL) {
-        return je_store_error(context, JE_RESULT_EMPTY_EXPRESSION, NULL);
-    }
-    if (context->read_ptr != '\0') {
-        return je_store_error(context, JE_RESULT_UNEXPECTED_TRAILING_EXPRESSION, "Unexpected trailing expression\n\t%s", context->read_ptr);
-    }
+    printf("==== FOLD CONSTANTS ===\n");
+    je_print_ast(context->ast_root, 0, 0);
 
+    // TODO: Generate bytecode
     // TODO: JIT compile if available.
 
     return JE_RESULT_SUCCESS;
 }
 
-int je_eval_slow(je_context_t* context) {
+int je_eval_slow(je_context_t* context, je_ast_node_t* node, je_value_t* result) {
+    je_value_t lvalue;
+    je_value_t rvalue;
+    int ret;
+
+    if (node->children[0] != NULL) {
+        ret = je_eval_slow(context, node->children[0], &lvalue);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+    if (node->children[1] != NULL) {
+        ret = je_eval_slow(context, node->children[1], &rvalue);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+
+    switch (node->type) {
+        case JE_NODE_LOGICAL_NOT_BOOL: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = !rvalue.bool_value;
+            break;
+        }
+        case JE_NODE_BITWISE_NOT_INT: {
+            result->type = JE_TYPE_INT;
+            result->int_value = ~rvalue.int_value;
+            break;
+        }
+        case JE_NODE_MUL_FLOAT: {
+            result->type = JE_TYPE_FLOAT;
+            result->float_value = lvalue.float_value * rvalue.float_value;
+            break;
+        }
+        case JE_NODE_MUL_INT: {
+            result->type = JE_TYPE_INT;
+            result->int_value = lvalue.int_value * rvalue.int_value;
+            break;
+        }
+        case JE_NODE_DIV_FLOAT: {
+            result->type = JE_TYPE_FLOAT;
+            result->float_value = lvalue.float_value / rvalue.float_value;
+            break;
+        }
+        case JE_NODE_DIV_INT: {
+            result->type = JE_TYPE_INT;
+            result->int_value = lvalue.int_value / rvalue.int_value;
+            break;
+        }
+        case JE_NODE_MOD_INT: {
+            result->type = JE_TYPE_INT;
+            result->int_value = lvalue.int_value % rvalue.int_value;
+            break;
+        }
+        case JE_NODE_SUB_FLOAT: {
+            result->type = JE_TYPE_FLOAT;
+            result->float_value = lvalue.float_value - rvalue.float_value;
+            break;
+        }
+        case JE_NODE_SUB_INT: {
+            result->type = JE_TYPE_INT;
+            result->int_value = lvalue.int_value - rvalue.int_value;
+            break;
+        }
+        case JE_NODE_ADD_FLOAT: {
+            result->type = JE_TYPE_FLOAT;
+            result->float_value = lvalue.float_value + rvalue.float_value;
+            break;
+        }
+        case JE_NODE_ADD_INT: {
+            result->type = JE_TYPE_INT;
+            result->int_value = lvalue.int_value + rvalue.int_value;
+            break;
+        }
+        case JE_NODE_ADD_STRING: {
+            int size = snprintf(NULL, 0, "%s%s", lvalue.string_value, rvalue.string_value);
+            int ret = je_alloc_transient(context, size + 1, &result->string_value);
+            if (ret < 0) {
+                return ret;
+            }
+            sprintf(result->string_value, "%s%s", lvalue.string_value, rvalue.string_value);
+            result->string_value_len = size + 1;
+            result->type = JE_TYPE_STRING;
+            break;
+        }
+        case JE_NODE_LESS_FLOAT: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (lvalue.float_value < rvalue.float_value);
+            break;
+        }
+        case JE_NODE_LESS_INT: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (lvalue.int_value < rvalue.int_value);
+            break;
+        }
+        case JE_NODE_GREATER_FLOAT: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (lvalue.float_value > rvalue.float_value);
+            break;
+        }
+        case JE_NODE_GREATER_INT: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (lvalue.int_value > rvalue.int_value);
+            break;
+        }
+        case JE_NODE_LE_FLOAT: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (lvalue.float_value <= rvalue.float_value);
+            break;
+        }
+        case JE_NODE_LE_INT: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (lvalue.int_value <= rvalue.int_value);
+            break;
+        }
+        case JE_NODE_GE_FLOAT: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (lvalue.float_value >= rvalue.float_value);
+            break;
+        }
+        case JE_NODE_GE_INT: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (lvalue.int_value >= rvalue.int_value);
+            break;
+        }
+        case JE_NODE_EQUAL_BOOL: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (lvalue.bool_value == rvalue.bool_value);
+            break;
+        }
+        case JE_NODE_EQUAL_INT: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (lvalue.int_value == rvalue.int_value);
+            break;
+        }
+        case JE_NODE_EQUAL_FLOAT: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (lvalue.float_value == rvalue.float_value);
+            break;
+        }
+        case JE_NODE_EQUAL_STRING: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (strcmp(lvalue.string_value, rvalue.string_value) == 0);
+            break;
+        }
+        case JE_NODE_NOT_EQUAL_BOOL: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (lvalue.bool_value != rvalue.bool_value);
+            break;
+        }
+        case JE_NODE_NOT_EQUAL_INT: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (lvalue.int_value != rvalue.int_value);
+            break;
+        }
+        case JE_NODE_NOT_EQUAL_FLOAT: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (lvalue.float_value != rvalue.float_value);
+            break;
+        }
+        case JE_NODE_NOT_EQUAL_STRING: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = (strcmp(lvalue.string_value, rvalue.string_value) != 0);
+            break;
+        }
+        case JE_NODE_BITWISE_AND_INT: {
+            result->type = JE_TYPE_INT;
+            result->int_value = lvalue.int_value & rvalue.int_value;
+            break;
+        }
+        case JE_NODE_BITWISE_OR_INT: {
+            result->type = JE_TYPE_INT;
+            result->int_value = lvalue.int_value | rvalue.int_value;
+            break;
+        }
+        case JE_NODE_LOGICAL_AND_BOOL: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = lvalue.bool_value && rvalue.bool_value;
+            break;
+        }
+        case JE_NODE_LOGICAL_OR_BOOL: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = lvalue.bool_value || rvalue.bool_value;
+            break;
+        }
+        case JE_NODE_CONSTANT_BOOL: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = node->constant->bool_value;
+            break;
+        }
+        case JE_NODE_CONSTANT_INT: {
+            result->type = JE_TYPE_INT;
+            result->int_value = node->constant->int_value;
+            break;
+        }
+        case JE_NODE_CONSTANT_FLOAT: {
+            result->type = JE_TYPE_FLOAT;
+            result->float_value = node->constant->float_value;
+            break;
+        }
+        case JE_NODE_CONSTANT_STRING: {
+            result->type = JE_TYPE_STRING;
+            result->string_value = node->constant->string_value;
+            break;
+        }
+        case JE_NODE_NEG_FLOAT: {
+            result->type = JE_TYPE_FLOAT;
+            result->float_value = -rvalue.float_value;
+            break;
+        }
+        case JE_NODE_POS_FLOAT: {
+            result->type = JE_TYPE_FLOAT;
+            result->float_value = +rvalue.float_value;
+            break;
+        }
+        case JE_NODE_NEG_INT: {
+            result->type = JE_TYPE_INT;
+            result->int_value = -rvalue.int_value;
+            break;
+        }
+        case JE_NODE_POS_INT: {
+            result->type = JE_TYPE_INT;
+            result->int_value = +rvalue.int_value;
+            break;
+        }
+        case JE_NODE_FLOAT_LITERAL: {
+            result->type = JE_TYPE_FLOAT;
+            result->float_value = node->value.float_value;
+            break;
+        }
+        case JE_NODE_INT_LITERAL: {
+            result->type = JE_TYPE_INT;
+            result->int_value = node->value.int_value;
+            break;
+        }
+        case JE_NODE_STRING_LITERAL: {
+            result->type = JE_TYPE_STRING;
+            result->string_value = node->value.string_value;
+            break;
+        }
+        case JE_NODE_BOOL_LITERAL: {
+            result->type = JE_TYPE_BOOL;
+            result->bool_value = node->value.bool_value;
+            break;
+        }
+        case JE_NODE_CAST_INT_TO_STRING: {
+            int size = snprintf(NULL, 0, "%i", rvalue.int_value);
+            int ret = je_alloc_transient(context, size + 1, &result->string_value);
+            if (ret < 0) {
+                return ret;
+            }
+            sprintf(result->string_value, "%i", rvalue.int_value);
+
+            result->string_value_len = size + 1;
+            result->type = JE_TYPE_STRING;
+            break;
+        }
+        case JE_NODE_CAST_FLOAT_TO_STRING: {
+            int size = snprintf(NULL, 0, "%f", rvalue.float_value);
+            int ret = je_alloc_transient(context, size + 1, &result->string_value);
+            if (ret < 0) {
+                return ret;
+            }
+            sprintf(result->string_value, "%f", rvalue.float_value);
+
+            result->string_value_len = size + 1;
+            result->type = JE_TYPE_STRING;
+            break;
+        }
+        case JE_NODE_CAST_BOOL_TO_STRING: {
+            result->string_value = (rvalue.bool_value ? "true" : "false");
+            result->type = JE_TYPE_STRING;
+            break;
+        }
+        case JE_NODE_CAST_STRING_TO_INT: {
+            result->int_value = atoi(rvalue.string_value);
+            result->type = JE_TYPE_INT;
+            break;
+        }
+        case JE_NODE_CAST_FLOAT_TO_INT: {
+            result->int_value = (int)rvalue.float_value;
+            result->type = JE_TYPE_INT;
+            break;
+        }
+        case JE_NODE_CAST_BOOL_TO_INT: {
+            result->int_value = (rvalue.bool_value != 0 ? 1 : 0);
+            result->type = JE_TYPE_INT;
+            break;
+        }
+        case JE_NODE_CAST_INT_TO_FLOAT: {
+            result->float_value = (float)rvalue.int_value;
+            result->type = JE_TYPE_FLOAT;
+            break;
+        }
+        case JE_NODE_CAST_STRING_TO_FLOAT: {
+            result->float_value = (float)atof(rvalue.string_value);
+            result->type = JE_TYPE_FLOAT;
+            break;
+        }
+        case JE_NODE_CAST_BOOL_TO_FLOAT: {
+            result->float_value = (rvalue.bool_value != 0 ? 1.0f : 0.0f);
+            result->type = JE_TYPE_FLOAT;
+            break;
+        }
+        case JE_NODE_CAST_INT_TO_BOOL: {
+            result->bool_value = (rvalue.int_value != 0 ? 1 : 0);
+            result->type = JE_TYPE_BOOL;
+            break;
+        }
+        case JE_NODE_CAST_STRING_TO_BOOL: {
+            result->bool_value = (strcmp(rvalue.string_value, "false") != 0 && strcmp(rvalue.string_value, "0") != 0);
+            result->type = JE_TYPE_BOOL;
+            break;
+        }
+        case JE_NODE_CAST_FLOAT_TO_BOOL: {
+            result->bool_value = (rvalue.float_value != 0.0f ? 1 : 0);
+            result->type = JE_TYPE_BOOL;
+            break;
+        }
+        default: {
+            assert(0);
+            return JE_RESULT_FAILED;
+        }
+    }
+    return JE_RESULT_SUCCESS;
+}
+
+int je_eval_jit(je_context_t* context, je_ast_node_t* node, je_value_t* result) {
     // TODO
     return JE_RESULT_FAILED;
 }
 
-int je_eval_jit(je_context_t* context) {
-    // TODO
-    return JE_RESULT_FAILED;
-}
+int je_eval(je_context_t* context) {    
+    context->transient_mem_arena_offset = 0;
 
-int je_eval(je_context_t* context) {
     if (context->jit_compiled) {
-        int ret = je_eval_jit(context);
+        int ret = je_eval_jit(context, context->ast_root, &context->result);
         if (ret < 0) {
             return ret;
         }
     }
     else {
-        int ret = je_eval_slow(context);
+        int ret = je_eval_slow(context, context->ast_root, &context->result);
         if (ret < 0) {
             return ret;
         }
