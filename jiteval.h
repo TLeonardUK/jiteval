@@ -2998,7 +2998,7 @@ void je_jit_emit_prologue(je_context_t* context) {
 }
 
 void je_jit_emit_epilogue(je_context_t* context) {
-    // TODO: Restroy non-volatile registers.
+    // TODO: Restroe non-volatile registers.
     je_jit_emit_bytes_1(context, 0xC3); // ret
 }
 
