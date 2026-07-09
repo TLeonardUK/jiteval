@@ -14,10 +14,14 @@
 //
 // DOCUMENTATION
 // 
-//      int je_new_context(je_context_t* context);
+//      int je_new_context(je_context_t* context, int flags);
 // 
 //          Takes an opaque context object that is used by all other functions
 //          to store stateful information. 
+// 
+//          The various JE_FLAG_* defines can be passed in as a bitmask to the flags
+//          parameter to control various aspects of the contexts behaviour.
+//          Pass in JE_FLAG_NONE if you want to use the defaults.
 //
 //          Returns a value of JE_RESULT_* describing the success or failure.
 //
@@ -230,10 +234,15 @@ extern "C" {
 #define JE_TYPE_FLOAT                               (3)
 #define JE_TYPE_STRING                              (4)
 
+#define JE_FLAG_NONE                                (0)     
+#define JE_FLAG_NO_OPTIMIZATION                     (1)     // Disables any optimization passes on the expression.
+#define JE_FLAG_NO_JIT                              (2)     // Disables jit compiling of the expression 
+
 typedef struct je_context_t je_context_t;
 typedef void (*je_func_t)(je_context_t* context);
+typedef void (*je_jit_func_t)();
 
-int je_new_context(je_context_t* context);
+int je_new_context(je_context_t* context, int flags);
 int je_free_context(je_context_t* context);
 
 int je_bind_variable_int(je_context_t* context, const char* name, bool is_constant, int value);
@@ -276,6 +285,19 @@ const char* je_error_msg(je_context_t* context);
 #include <math.h>
 #include <stdarg.h>
 #include <assert.h>
+#include <stdint.h>
+
+// Only support windows/x64 for the moment.
+#ifdef _WIN32
+#ifdef _M_X64
+#define JE_JIT_AVAILABLE
+#endif
+#include <Windows.h>
+#endif
+
+// -----------------------------------------------------------------------
+// DEFINES
+// -----------------------------------------------------------------------
 
 #define JE_TOK_IDENTIFIER               (0)
 #define JE_TOK_FLOAT                    (1)
@@ -403,6 +425,10 @@ const char* je_error_msg(je_context_t* context);
 #define JE_MAX_STRING_CONSTANT_LENGTH   (256)
 #define JE_MAX_OPERATOR_PRECEDENCE      (9)
 
+// -----------------------------------------------------------------------
+// TYPES
+// -----------------------------------------------------------------------
+
 // TODO: Replace pointers with offsets to reduce sizes?
 
 typedef struct je_token_t {
@@ -458,8 +484,10 @@ typedef struct je_ast_node_t {
 } je_ast_node_t;
 
 typedef struct je_context_t {
+    int                     flags;                              // Flags controling the contexts behaviour.
     char*                   mem_arena;                          // Block of memory that all dynamically allocated memory is stored in. Used as a stack allocator.
     size_t                  mem_arena_offset;                   // Next locations in the mem_arena to allocate from.
+    bool                    mem_arena_frozen;                   // If set to true we will assert if allocations are attempted. Used during jit compiling.
     char*                   transient_mem_arena;                // Block of memory that all transient allocations using during evaluation is stored in. Used as a stack allocator.
     size_t                  transient_mem_arena_offset;         // Next locations in the transient_mem_arena_offset to allocate from.
     char*                   source;                             // Pointer to source code string
@@ -471,12 +499,53 @@ typedef struct je_context_t {
     int                     error_code;                         // Last error that occured in the context.
     char                    error_msg[512];                     // Error message from the last failing call.
     je_ast_node_t*          ast_root;                           // Root node in the ast graph.
-    bool                    jit_compiled;                       // If the compiled expression is jit compiled.
-    bool                    compiled;                           // If this context has been compiled.
     je_func_def_t*          active_function;                    // Pointer to the function currently being called.
     je_value_t              function_params[JE_MAX_PARAMETERS]; // Parameters passed into the last function called.
     je_value_t              function_result;                    // Return value from function called
+    bool                    jit_compiled;                       // If the compiled expression is jit compiled.
+    char*                   jit_executable_memory;              // Executable memory containing the JIT'd code.
+    char*                   jit_write_buffer;                   // Start of buffer to generate JIT code into.
+    int                     jit_write_buffer_len;               // Length of write buffer.
+    char*                   jit_write_ptr;                      // Current write pointer for generating JIT code.
+    bool                    jit_write_buffer_overflow;          // If we ran out of space while emitting JIT code.
+    bool                    compiled;                           // If this context has been compiled.
 } je_context_t;
+
+// -----------------------------------------------------------------------
+// PLATFORM SPECIFIC CODE
+// -----------------------------------------------------------------------
+
+#ifdef _WIN32
+int je_alloc_executable(je_context_t* context, const char* code, int code_size, char** output) {
+    SYSTEM_INFO system_info;
+    GetSystemInfo(&system_info);
+
+    int pageSize = system_info.dwPageSize;
+    int memorySize = ((code_size + (pageSize - 1)) / pageSize) * pageSize;
+    DWORD dummy;
+
+    *output = (char*)VirtualAlloc(NULL, memorySize, MEM_COMMIT, PAGE_READWRITE);
+    memcpy(*output, code, code_size);
+    VirtualProtect(*output, memorySize, PAGE_EXECUTE_READ, &dummy); 
+
+    return *output != NULL ? JE_RESULT_SUCCESS : JE_RESULT_FAILED;
+}
+
+int je_free_executable(je_context_t* context, void* memory) {
+    if (!VirtualFree(memory, 0, MEM_RELEASE)) {
+        return JE_RESULT_FAILED;
+    }
+    return JE_RESULT_SUCCESS;
+}
+#else
+#if JE_JIT_ENABLED
+#error Jit enabled but missing implementation.
+#endif
+#endif
+
+// -----------------------------------------------------------------------
+// UTILITY FUNCTIONS
+// -----------------------------------------------------------------------
 
 int je_parse(je_context_t* context, je_ast_node_t** node, int precedence);
 int je_eval_slow(je_context_t* context, je_ast_node_t* node, je_value_t* result);
@@ -530,6 +599,8 @@ int je_alloc_transient(je_context_t* context, size_t size, char** ptr) {
 }
 
 int je_alloc(je_context_t* context, size_t size, char** ptr) {
+    assert(!context->mem_arena_frozen);
+
     int align_padding = JE_MEM_ARENA_ALIGN - (((size_t)context->mem_arena + context->mem_arena_offset) % JE_MEM_ARENA_ALIGN);
     if (align_padding == JE_MEM_ARENA_ALIGN) {
         align_padding = 0;
@@ -912,8 +983,17 @@ int je_coerce_to_bool(je_context_t* context, je_value_t* value) {
     return JE_RESULT_SUCCESS;
 }
 
-int je_new_context(je_context_t* context) {
+const char* je_error_msg(je_context_t* context) {
+    return context->error_msg;
+}
+
+// -----------------------------------------------------------------------
+// PUBLIC FUNCTIONS
+// -----------------------------------------------------------------------
+
+int je_new_context(je_context_t* context, int flags) {
     memset(context, 0, sizeof(struct je_context_t));
+    context->flags = flags;
     context->mem_arena = malloc(JE_MEM_ARENA_SIZE);
     if (context->mem_arena == NULL) {
         return JE_RESULT_OOM;
@@ -1202,9 +1282,9 @@ int je_result_bool(je_context_t* context, int* value) {
     return JE_RESULT_SUCCESS;
 }
 
-const char* je_error_msg(je_context_t* context) {
-    return context->error_msg;
-}
+// -----------------------------------------------------------------------
+// LEXICAL ANALYSIS
+// -----------------------------------------------------------------------
 
 int je_read_token(je_context_t* context, je_token_t* tok) {
     
@@ -1481,6 +1561,10 @@ void je_store_token_rewind_point(je_context_t* context) {
 void je_rewind_token_stream(je_context_t* context) {
     context->read_ptr = context->rewind_read_ptr;
 }
+
+// -----------------------------------------------------------------------
+// PARSING
+// -----------------------------------------------------------------------
 
 int je_parse_term(je_context_t* context, je_ast_node_t** node) {
 
@@ -1798,6 +1882,10 @@ int je_parse(je_context_t* context, je_ast_node_t** node, int precedence) {
 
     return JE_RESULT_SUCCESS;
 }
+
+// -----------------------------------------------------------------------
+// SEMANTIC ANALYSIS
+// -----------------------------------------------------------------------
 
 int je_type_balance(je_ast_node_t* lvalue, je_ast_node_t* rvalue) {
     if (lvalue == NULL) {
@@ -2288,6 +2376,10 @@ int je_semant(je_context_t* context, je_ast_node_t** node_ptr) {
     return JE_RESULT_SUCCESS;
 }
 
+// -----------------------------------------------------------------------
+// OPTIMIZATION
+// -----------------------------------------------------------------------
+
 void je_mark_nodes_constant(je_ast_node_t* node) {
     node->is_constant = true;
 
@@ -2351,62 +2443,9 @@ int je_fold_constants(je_context_t* context) {
     return JE_RESULT_SUCCESS;
 }
 
-int je_compile(je_context_t* context, const char* source) {
-    if (context->compiled) {
-        return JE_RESULT_CANNOT_COMPILE_MULTIPLE_TIMES;
-    }
-    context->compiled = true;
-    context->jit_compiled = false;
-
-    // Copy source to an internal buffer.
-    size_t source_len = strlen(source);
-    int ret = je_alloc(context, source_len + 1, &context->source);
-    if (ret < 0) {
-        return ret;
-    }
-    strncpy(context->source, source, source_len + 1);
-    context->read_ptr = context->source;
-
-    // Parse the first expression.
-    ret = je_parse(context, &context->ast_root, JE_MAX_OPERATOR_PRECEDENCE);
-    if (ret < 0) {
-        return ret;
-    }
-
-    // Make sure we actually parsed something valid.
-    if (context->ast_root == NULL) {
-        return je_store_error(context, JE_RESULT_EMPTY_EXPRESSION, NULL);
-    }
-    if (context->read_ptr[0] != '\0') {
-        return je_store_error(context, JE_RESULT_UNEXPECTED_TRAILING_EXPRESSION, "Unexpected trailing expression\n\t%s", context->read_ptr);
-    }
-
-    printf("==== PARSE ===\n");
-    je_print_ast(context->ast_root, 0, 0);
-
-    // Semantically analyze the ast to make sure its valid and insert implicit conversions/etc where required.
-    ret = je_semant(context, &context->ast_root);
-    if (ret < 0) {
-        return ret;
-    }
-
-    printf("==== SEMANT ===\n");
-    je_print_ast(context->ast_root, 0, 0);
-
-    // Fold any constant operations for simple optimization.
-    ret = je_fold_constants(context);
-    if (ret < 0) {
-        return ret;
-    }
-
-    printf("==== FOLD CONSTANTS ===\n");
-    je_print_ast(context->ast_root, 0, 0);
-
-    // TODO: Generate bytecode
-    // TODO: JIT compile if available.
-
-    return JE_RESULT_SUCCESS;
-}
+// -----------------------------------------------------------------------
+// EVALUATION
+// -----------------------------------------------------------------------
 
 int je_eval_slow(je_context_t* context, je_ast_node_t* node, je_value_t* result) {
     je_value_t values[JE_MAX_PARAMETERS];
@@ -2751,7 +2790,9 @@ int je_eval_slow(je_context_t* context, je_ast_node_t* node, je_value_t* result)
 }
 
 int je_eval_jit(je_context_t* context, je_ast_node_t* node, je_value_t* result) {
-    // TODO
+    je_jit_func_t func = (je_jit_func_t)context->jit_executable_memory;
+    func();
+    // TODO: Store result somewhere.
     return JE_RESULT_FAILED;
 }
 
@@ -2772,6 +2813,230 @@ int je_eval(je_context_t* context) {
     }
     return JE_RESULT_SUCCESS;
 }
+
+// -----------------------------------------------------------------------
+// COMPILING
+// -----------------------------------------------------------------------
+
+#ifdef JE_JIT_AVAILABLE
+int je_compile_jit(je_context_t* context);
+#endif // JE_JIT_AVAILABLE
+
+int je_compile(je_context_t* context, const char* source) {
+    if (context->compiled) {
+        return JE_RESULT_CANNOT_COMPILE_MULTIPLE_TIMES;
+    }
+    context->compiled = true;
+    context->jit_compiled = false;
+
+    // Copy source to an internal buffer.
+    size_t source_len = strlen(source);
+    int ret = je_alloc(context, source_len + 1, &context->source);
+    if (ret < 0) {
+        return ret;
+    }
+    strncpy(context->source, source, source_len + 1);
+    context->read_ptr = context->source;
+
+    // Parse the first expression.
+    ret = je_parse(context, &context->ast_root, JE_MAX_OPERATOR_PRECEDENCE);
+    if (ret < 0) {
+        return ret;
+    }
+
+    // Make sure we actually parsed something valid.
+    if (context->ast_root == NULL) {
+        return je_store_error(context, JE_RESULT_EMPTY_EXPRESSION, NULL);
+    }
+    if (context->read_ptr[0] != '\0') {
+        return je_store_error(context, JE_RESULT_UNEXPECTED_TRAILING_EXPRESSION, "Unexpected trailing expression\n\t%s", context->read_ptr);
+    }
+
+    printf("==== PARSE ===\n");
+    je_print_ast(context->ast_root, 0, 0);
+
+    // Semantically analyze the ast to make sure its valid and insert implicit conversions/etc where required.
+    ret = je_semant(context, &context->ast_root);
+    if (ret < 0) {
+        return ret;
+    }
+
+    printf("==== SEMANT ===\n");
+    je_print_ast(context->ast_root, 0, 0);
+
+    // Fold any constant operations for simple optimization.
+    if ((context->flags & JE_FLAG_NO_OPTIMIZATION) == 0) {
+        ret = je_fold_constants(context);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+
+    printf("==== FOLD CONSTANTS ===\n");
+    je_print_ast(context->ast_root, 0, 0);
+
+#ifdef JE_JIT_AVAILABLE
+
+    if ((context->flags & JE_FLAG_NO_JIT) == 0) {
+        ret = je_compile_jit(context);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+
+#endif
+
+    return JE_RESULT_SUCCESS;
+}
+
+#ifdef JE_JIT_AVAILABLE
+
+void je_jit_emit_prologue(je_context_t* context);
+void je_jit_emit_epilogue(je_context_t* context);
+void je_jit_emit_node(je_context_t* context, je_ast_node_t* node);
+
+int je_compile_jit(je_context_t* context) {
+    int ret;
+    
+    // Use remaining space in the mem arena for jit compiling.
+    context->jit_write_buffer = context->mem_arena + context->mem_arena_offset;
+    context->jit_write_buffer_len = (int)(JE_MEM_ARENA_SIZE - context->mem_arena_offset);
+    context->jit_write_ptr = context->jit_write_buffer;
+    context->jit_write_buffer_overflow = false;
+
+    context->mem_arena_frozen = true;
+    je_jit_emit_prologue(context);
+    je_jit_emit_node(context, context->ast_root);
+    je_jit_emit_epilogue(context);
+    context->mem_arena_frozen = false;
+
+    // Ran out of space while trying to emit all JIT code.
+    if (context->jit_write_buffer_overflow) {
+        return JE_RESULT_OOM;
+    }
+
+    // Emplace the compiled code into executable memory.
+    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
+    ret = je_alloc_executable(context, context->jit_write_buffer, jit_length, &context->jit_executable_memory);
+    if (ret < 0) {
+        return ret;
+    }
+
+    context->jit_compiled = true;
+    return JE_RESULT_SUCCESS;
+}
+
+void je_jit_emit_bytes_1(je_context_t* context, uint8_t byte1) {
+    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
+    int remaining_space = context->jit_write_buffer_len - jit_length;
+    if (remaining_space < 1) {
+        context->jit_write_buffer_overflow = true;
+        return;
+    }
+    *(context->jit_write_ptr++) = byte1;
+}
+
+void je_jit_emit_bytes_2(je_context_t* context, uint8_t byte1, uint8_t byte2) {
+    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
+    int remaining_space = context->jit_write_buffer_len - jit_length;
+    if (remaining_space < 2) {
+        context->jit_write_buffer_overflow = true;
+        return;
+    }
+    *(context->jit_write_ptr++) = byte1;
+    *(context->jit_write_ptr++) = byte2;
+}
+
+void je_jit_emit_bytes_3(je_context_t* context, uint8_t byte1, uint8_t byte2, uint8_t byte3) {
+    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
+    int remaining_space = context->jit_write_buffer_len - jit_length;
+    if (remaining_space < 3) {
+        context->jit_write_buffer_overflow = true;
+        return;
+    }
+    *(context->jit_write_ptr++) = byte1;
+    *(context->jit_write_ptr++) = byte2;
+    *(context->jit_write_ptr++) = byte3;
+}
+
+void je_jit_emit_prologue(je_context_t* context) {
+    // TODO: Store non-volatile registers.
+}
+
+void je_jit_emit_epilogue(je_context_t* context) {
+    // TODO: Restroy non-volatile registers.
+    je_jit_emit_bytes_1(context, 0xC3); // ret
+}
+
+void je_jit_emit_node(je_context_t* context, je_ast_node_t* node) {
+    switch (node->type) {
+        case JE_NODE_LOGICAL_NOT_BOOL: break;
+        case JE_NODE_BITWISE_NOT_INT: break;
+        case JE_NODE_MUL_FLOAT: break;
+        case JE_NODE_MUL_INT: break;
+        case JE_NODE_DIV_FLOAT: break;
+        case JE_NODE_DIV_INT: break;
+        case JE_NODE_MOD_INT: break;
+        case JE_NODE_SUB_FLOAT: break;
+        case JE_NODE_SUB_INT: break;
+        case JE_NODE_ADD_FLOAT: break;
+        case JE_NODE_ADD_INT: break;
+        case JE_NODE_ADD_STRING: break;
+        case JE_NODE_LESS_FLOAT: break;
+        case JE_NODE_LESS_INT: break;
+        case JE_NODE_GREATER_FLOAT: break;
+        case JE_NODE_GREATER_INT: break;
+        case JE_NODE_LE_FLOAT: break;
+        case JE_NODE_LE_INT: break;
+        case JE_NODE_GE_FLOAT: break;
+        case JE_NODE_GE_INT: break;
+        case JE_NODE_EQUAL_BOOL: break;
+        case JE_NODE_EQUAL_INT: break;
+        case JE_NODE_EQUAL_FLOAT: break;
+        case JE_NODE_EQUAL_STRING: break;
+        case JE_NODE_NOT_EQUAL_BOOL: break;
+        case JE_NODE_NOT_EQUAL_INT: break;
+        case JE_NODE_NOT_EQUAL_FLOAT: break;
+        case JE_NODE_NOT_EQUAL_STRING: break;
+        case JE_NODE_BITWISE_AND_INT: break;
+        case JE_NODE_BITWISE_OR_INT: break;
+        case JE_NODE_LOGICAL_AND_BOOL: break;
+        case JE_NODE_LOGICAL_OR_BOOL: break;
+        case JE_NODE_VARIABLE_BOOL: break;
+        case JE_NODE_VARIABLE_INT: break;
+        case JE_NODE_VARIABLE_FLOAT: break;
+        case JE_NODE_VARIABLE_STRING: break;
+        case JE_NODE_NEG_FLOAT: break;
+        case JE_NODE_POS_FLOAT: break;
+        case JE_NODE_NEG_INT: break;
+        case JE_NODE_POS_INT: break;
+        case JE_NODE_FLOAT_LITERAL: break;
+        case JE_NODE_INT_LITERAL: break;
+        case JE_NODE_STRING_LITERAL: break;
+        case JE_NODE_BOOL_LITERAL: break;
+        case JE_NODE_CAST_INT_TO_STRING: break;
+        case JE_NODE_CAST_FLOAT_TO_STRING: break;
+        case JE_NODE_CAST_BOOL_TO_STRING: break;
+        case JE_NODE_CAST_STRING_TO_INT: break;
+        case JE_NODE_CAST_FLOAT_TO_INT: break;
+        case JE_NODE_CAST_BOOL_TO_INT: break;
+        case JE_NODE_CAST_INT_TO_FLOAT: break;
+        case JE_NODE_CAST_STRING_TO_FLOAT: break;
+        case JE_NODE_CAST_BOOL_TO_FLOAT: break;
+        case JE_NODE_CAST_INT_TO_BOOL: break;
+        case JE_NODE_CAST_STRING_TO_BOOL: break;
+        case JE_NODE_CAST_FLOAT_TO_BOOL: break;
+        case JE_NODE_FUNCTION_CALL_INT: break;
+        case JE_NODE_FUNCTION_CALL_FLOAT: break;
+        case JE_NODE_FUNCTION_CALL_BOOL: break;
+        case JE_NODE_FUNCTION_CALL_STRING: break;
+        default: {
+            break;
+        }
+    }
+}
+
+#endif // JE_JIT_AVAILABLE
 
 #endif
 
