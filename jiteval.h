@@ -197,6 +197,44 @@ extern "C" {
 #endif
 
 // -----------------------------------------------------------------------
+// COMPILE TIME OPTIONS
+// -----------------------------------------------------------------------
+
+// Define these before your JITEVAL_IMPL include to modify various 
+// limits of the code
+
+// A context allocates two fixed memory arenas up front that it uses
+// as permanent and transient stack allocators. If you are trying to
+// parse a very complex expression you may need to further increase this.
+// 
+// Maximum dynamic memory allocation of a context is double this, plus
+// any additional memory needed for JIT compiled memory pages.
+#ifndef JE_MEM_ARENA_SIZE
+#define JE_MEM_ARENA_SIZE               (16 * 1024)
+#endif
+
+// Alignment of allocations from the memory arena. In general should not
+// require modification, but if your platform requites specific alignment
+// for performance you can modify this.
+#ifndef JE_MEM_ARENA_ALIGN
+#define JE_MEM_ARENA_ALIGN              (16)
+#endif
+
+// Maximum number of parameters a function may take. This expands the size
+// of a handful of fixed size arrays, take care when increasing as it will
+// have an effect on how much memory is needed in the arena.
+#ifndef JE_MAX_PARAMETERS
+#define JE_MAX_PARAMETERS               (8)
+#endif
+
+// Maximum length of a constant string in an expression. This expands the
+// siz eof a handful of fixed size arrays, take care when increasing as it will
+// have an effect on how much memory is needed in the arena.
+#ifndef JE_MAX_STRING_CONSTANT_LENGTH
+#define JE_MAX_STRING_CONSTANT_LENGTH   (256)
+#endif
+
+// -----------------------------------------------------------------------
 // HEADER
 // -----------------------------------------------------------------------
 
@@ -419,10 +457,6 @@ const char* je_error_msg(je_context_t* context);
 #define JE_NODE_FUNCTION_CALL_BOOL      (84)
 #define JE_NODE_FUNCTION_CALL_STRING    (85)
 
-#define JE_MEM_ARENA_SIZE               (16 * 1024)
-#define JE_MEM_ARENA_ALIGN              (16)
-#define JE_MAX_PARAMETERS               (8)
-#define JE_MAX_STRING_CONSTANT_LENGTH   (256)
 #define JE_MAX_OPERATOR_PRECEDENCE      (9)
 
 // -----------------------------------------------------------------------
