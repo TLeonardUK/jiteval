@@ -1,37 +1,6 @@
 // -----------------------------------------------------------------------
-// jiteval
-// Copyright 2026 Tim Leonard
-//
-// Permission is hereby granted, free of charge, to any person obtaining a 
-// copy of this software and associated documentation files(the “Software”), 
-// to deal in the Software without restriction, including without limitation 
-// the rights to use, copy, modify, merge, publish, distribute, sublicense, 
-// and /or sell copies of the Software, and to permit persons to whom the 
-// Software is furnished to do so, subject to the following conditions :
-// 
-// The above copyright notice and this permission notice shall be included 
-// in all copies or substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS 
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF 
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY 
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
-// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
-// SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-// -----------------------------------------------------------------------
-#ifndef JITEVAL_H
-#define JITEVAL_H
-
-#include <stdbool.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// -----------------------------------------------------------------------
 // jiteval.h - v1.0 - expression evaluation with optional JIT support
-// Tim Leonard, July 2026
+// Tim Leonard, Copyright 2026
 //
 // Intended for when you want to parse evaluate some C-style expressions
 // as quickly as possible.
@@ -165,6 +134,8 @@ extern "C" {
 //          Bitwise:            &, |, ~, ^
 //          Sub Expressions:    ( )
 //          Casting:            (int) / (float) / (string) / (bool)
+//          Functions 
+//          Variables
 // 
 //      Supported types are: 
 // 
@@ -185,7 +156,23 @@ extern "C" {
 //
 // LICENSE
 //
-//      See top of file for license information.
+//      Permission is hereby granted, free of charge, to any person obtaining a 
+//      copy of this software and associated documentation files(the “Software”), 
+//      to deal in the Software without restriction, including without limitation 
+//      the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+//      and /or sell copies of the Software, and to permit persons to whom the 
+//      Software is furnished to do so, subject to the following conditions :
+// 
+//      The above copyright notice and this permission notice shall be included 
+//      in all copies or substantial portions of the Software.
+// 
+//      THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS 
+//      OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF 
+//      MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+//      IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY 
+//      CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
+//      TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
+//      SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 // VERSION HISTORY
 //
@@ -196,6 +183,14 @@ extern "C" {
 //      See sample.c in the same directory as this file.
 // 
 // -----------------------------------------------------------------------
+#ifndef JITEVAL_H
+#define JITEVAL_H
+
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // -----------------------------------------------------------------------
 // HEADER
@@ -408,7 +403,7 @@ const char* je_error_msg(je_context_t* context);
 #define JE_MAX_STRING_CONSTANT_LENGTH   (256)
 #define JE_MAX_OPERATOR_PRECEDENCE      (9)
 
-// TODO: Replace pointers with offsets to reduce sizes.
+// TODO: Replace pointers with offsets to reduce sizes?
 
 typedef struct je_token_t {
     int                     type;
