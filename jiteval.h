@@ -210,7 +210,7 @@ extern "C" {
 // Maximum dynamic memory allocation of a context is double this, plus
 // any additional memory needed for JIT compiled memory pages.
 #ifndef JE_MEM_ARENA_SIZE
-#define JE_MEM_ARENA_SIZE               (16 * 1024)
+#define JE_MEM_ARENA_SIZE               (4 * 1024)
 #endif
 
 // Alignment of allocations from the memory arena. In general should not
@@ -2924,10 +2924,35 @@ int je_compile(je_context_t* context, const char* source) {
 }
 
 #ifdef JE_JIT_AVAILABLE
+#ifdef _M_X64
+
+#define JE_JIT_X86_REG_EAX 0
+#define JE_JIT_X86_REG_ECX 1
+#define JE_JIT_X86_REG_EDX 2
+#define JE_JIT_X86_REG_EBX 3
+#define JE_JIT_X86_REG_ESP 4
+#define JE_JIT_X86_REG_EBP 5
+#define JE_JIT_X86_REG_ESI 6
+#define JE_JIT_X86_REG_EDI 7
+
+#define JE_JIT_X86_OPCODE_RET           0xC3
+#define JE_JIT_X86_OPCODE_PUSH_R32      0x50
+#define JE_JIT_X86_OPCODE_POP_R32       0x58
+#define JE_JIT_X86_OPCODE_ADD_R32_R32   0x01
+
+// Some good references if unfamiliar with x86 instruction encoding.
+// http://ref.x86asm.net/geek32-abc.html
+// https://pyokagan.name/blog/2019-09-20-x86encoding/
+
+typedef struct je_jit_x86_modrm_t {
+    uint8_t mod : 2;
+    uint8_t reg : 3;
+    uint8_t rm : 3;
+} je_jit_x86_modrm_t;
 
 void je_jit_emit_prologue(je_context_t* context);
 void je_jit_emit_epilogue(je_context_t* context);
-void je_jit_emit_node(je_context_t* context, je_ast_node_t* node);
+int  je_jit_emit_node(je_context_t* context, je_ast_node_t* node);
 
 int je_compile_jit(je_context_t* context) {
     int ret;
@@ -2993,83 +3018,232 @@ void je_jit_emit_bytes_3(je_context_t* context, uint8_t byte1, uint8_t byte2, ui
     *(context->jit_write_ptr++) = byte3;
 }
 
+void je_jit_emit_x86_r32_r32(je_context_t* context, int opcode, int reg1, int reg2) {
+    assert(sizeof(je_jit_x86_modrm_t) == 1);
+
+    je_jit_x86_modrm_t modrm;
+    modrm.mod = 0x3; // register direct addressing
+    modrm.reg = reg2;
+    modrm.rm = reg1;
+
+    je_jit_emit_bytes_2(context, opcode, *((uint8_t*)&modrm));
+}
+
 void je_jit_emit_prologue(je_context_t* context) {
-    // TODO: Store non-volatile registers.
+    // Store non-volatile registers.
+    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + JE_JIT_X86_REG_EBX); // push ebx
+    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + JE_JIT_X86_REG_ESP); // push esp
+    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + JE_JIT_X86_REG_EBP); // push ebp
+    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + JE_JIT_X86_REG_ESI); // push esi
+    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + JE_JIT_X86_REG_EDI); // push edi
 }
 
 void je_jit_emit_epilogue(je_context_t* context) {
-    // TODO: Restroe non-volatile registers.
-    je_jit_emit_bytes_1(context, 0xC3); // ret
+    // Restore non-volatile registers.
+    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + JE_JIT_X86_REG_EBX); // pop ebx
+    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + JE_JIT_X86_REG_ESP); // pop esp
+    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + JE_JIT_X86_REG_EBP); // pop ebp
+    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + JE_JIT_X86_REG_ESI); // pop esi
+    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + JE_JIT_X86_REG_EDI); // pop edi
+    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_RET); // ret
 }
 
-void je_jit_emit_node(je_context_t* context, je_ast_node_t* node) {
+// Return value is the register the result is in if applicable.
+int je_jit_emit_node(je_context_t* context, je_ast_node_t* node) {
     switch (node->type) {
-        case JE_NODE_LOGICAL_NOT_BOOL: break;
-        case JE_NODE_BITWISE_NOT_INT: break;
-        case JE_NODE_MUL_FLOAT: break;
-        case JE_NODE_MUL_INT: break;
-        case JE_NODE_DIV_FLOAT: break;
-        case JE_NODE_DIV_INT: break;
-        case JE_NODE_MOD_INT: break;
-        case JE_NODE_SUB_FLOAT: break;
-        case JE_NODE_SUB_INT: break;
-        case JE_NODE_ADD_FLOAT: break;
-        case JE_NODE_ADD_INT: break;
-        case JE_NODE_ADD_STRING: break;
-        case JE_NODE_LESS_FLOAT: break;
-        case JE_NODE_LESS_INT: break;
-        case JE_NODE_GREATER_FLOAT: break;
-        case JE_NODE_GREATER_INT: break;
-        case JE_NODE_LE_FLOAT: break;
-        case JE_NODE_LE_INT: break;
-        case JE_NODE_GE_FLOAT: break;
-        case JE_NODE_GE_INT: break;
-        case JE_NODE_EQUAL_BOOL: break;
-        case JE_NODE_EQUAL_INT: break;
-        case JE_NODE_EQUAL_FLOAT: break;
-        case JE_NODE_EQUAL_STRING: break;
-        case JE_NODE_NOT_EQUAL_BOOL: break;
-        case JE_NODE_NOT_EQUAL_INT: break;
-        case JE_NODE_NOT_EQUAL_FLOAT: break;
-        case JE_NODE_NOT_EQUAL_STRING: break;
-        case JE_NODE_BITWISE_AND_INT: break;
-        case JE_NODE_BITWISE_OR_INT: break;
-        case JE_NODE_LOGICAL_AND_BOOL: break;
-        case JE_NODE_LOGICAL_OR_BOOL: break;
-        case JE_NODE_VARIABLE_BOOL: break;
-        case JE_NODE_VARIABLE_INT: break;
-        case JE_NODE_VARIABLE_FLOAT: break;
-        case JE_NODE_VARIABLE_STRING: break;
-        case JE_NODE_NEG_FLOAT: break;
-        case JE_NODE_POS_FLOAT: break;
-        case JE_NODE_NEG_INT: break;
-        case JE_NODE_POS_INT: break;
-        case JE_NODE_FLOAT_LITERAL: break;
-        case JE_NODE_INT_LITERAL: break;
-        case JE_NODE_STRING_LITERAL: break;
-        case JE_NODE_BOOL_LITERAL: break;
-        case JE_NODE_CAST_INT_TO_STRING: break;
-        case JE_NODE_CAST_FLOAT_TO_STRING: break;
-        case JE_NODE_CAST_BOOL_TO_STRING: break;
-        case JE_NODE_CAST_STRING_TO_INT: break;
-        case JE_NODE_CAST_FLOAT_TO_INT: break;
-        case JE_NODE_CAST_BOOL_TO_INT: break;
-        case JE_NODE_CAST_INT_TO_FLOAT: break;
-        case JE_NODE_CAST_STRING_TO_FLOAT: break;
-        case JE_NODE_CAST_BOOL_TO_FLOAT: break;
-        case JE_NODE_CAST_INT_TO_BOOL: break;
-        case JE_NODE_CAST_STRING_TO_BOOL: break;
-        case JE_NODE_CAST_FLOAT_TO_BOOL: break;
-        case JE_NODE_FUNCTION_CALL_INT: break;
-        case JE_NODE_FUNCTION_CALL_FLOAT: break;
-        case JE_NODE_FUNCTION_CALL_BOOL: break;
-        case JE_NODE_FUNCTION_CALL_STRING: break;
+        case JE_NODE_LOGICAL_NOT_BOOL: {
+            break;
+        }
+        case JE_NODE_BITWISE_NOT_INT: {
+            break;
+        }
+        case JE_NODE_MUL_FLOAT: {
+            break;
+        }
+        case JE_NODE_MUL_INT: {
+            break;
+        }
+        case JE_NODE_DIV_FLOAT: {
+            break;
+        }
+        case JE_NODE_DIV_INT: {
+            break;
+        }
+        case JE_NODE_MOD_INT: {
+            break;
+        }
+        case JE_NODE_SUB_FLOAT: {
+            break;
+        }
+        case JE_NODE_SUB_INT: {
+            break;
+        }
+        case JE_NODE_ADD_FLOAT: {
+            break;
+        }
+        case JE_NODE_ADD_INT: {
+            int reg1 = je_jit_emit_node(context, node->children[0]);
+            int reg2 = je_jit_emit_node(context, node->children[1]);
+            je_jit_emit_x86_r32_r32(context, JE_JIT_X86_OPCODE_ADD_R32_R32, JE_JIT_X86_REG_EAX, JE_JIT_X86_REG_EBP); // add eAX, eBP
+            break;
+        }
+        case JE_NODE_ADD_STRING: {
+            break;
+        }
+        case JE_NODE_LESS_FLOAT: {
+            break;
+        }
+        case JE_NODE_LESS_INT: {
+            break;
+        }
+        case JE_NODE_GREATER_FLOAT: {
+            break;
+        }
+        case JE_NODE_GREATER_INT: {
+            break;
+        }
+        case JE_NODE_LE_FLOAT: {
+            break;
+        }
+        case JE_NODE_LE_INT: {
+            break;
+        }
+        case JE_NODE_GE_FLOAT: {
+            break;
+        }
+        case JE_NODE_GE_INT: {
+            break;
+        }
+        case JE_NODE_EQUAL_BOOL: {
+            break;
+        }
+        case JE_NODE_EQUAL_INT: {
+            break;
+        }
+        case JE_NODE_EQUAL_FLOAT: {
+            break;
+        }
+        case JE_NODE_EQUAL_STRING: {
+            break;
+        }
+        case JE_NODE_NOT_EQUAL_BOOL: {
+            break;
+        }
+        case JE_NODE_NOT_EQUAL_INT: {
+            break;
+        }
+        case JE_NODE_NOT_EQUAL_FLOAT: {
+            break;
+        }
+        case JE_NODE_NOT_EQUAL_STRING: {
+            break;
+        }
+        case JE_NODE_BITWISE_AND_INT: {
+            break;
+        }
+        case JE_NODE_BITWISE_OR_INT: {
+            break;
+        }
+        case JE_NODE_LOGICAL_AND_BOOL: {
+            break;
+        }
+        case JE_NODE_LOGICAL_OR_BOOL: {
+            break;
+        }
+        case JE_NODE_VARIABLE_BOOL: {
+            break;
+        }
+        case JE_NODE_VARIABLE_INT: {
+            break;
+        }
+        case JE_NODE_VARIABLE_FLOAT: {
+            break;
+        }
+        case JE_NODE_VARIABLE_STRING: {
+            break;
+        }
+        case JE_NODE_NEG_FLOAT: {
+            break;
+        }
+        case JE_NODE_POS_FLOAT: {
+            break;
+        }
+        case JE_NODE_NEG_INT: {
+            break;
+        }
+        case JE_NODE_POS_INT: {
+            break;
+        }
+        case JE_NODE_FLOAT_LITERAL: {
+            break;
+        }
+        case JE_NODE_INT_LITERAL: {
+            break;
+        }
+        case JE_NODE_STRING_LITERAL: {
+            break;
+        }
+        case JE_NODE_BOOL_LITERAL: {
+            break;
+        }
+        case JE_NODE_CAST_INT_TO_STRING: {
+            break;
+        }
+        case JE_NODE_CAST_FLOAT_TO_STRING: {
+            break;
+        }
+        case JE_NODE_CAST_BOOL_TO_STRING: {
+            break;
+        }
+        case JE_NODE_CAST_STRING_TO_INT: {
+            break;
+        }
+        case JE_NODE_CAST_FLOAT_TO_INT: {
+            break;
+        }
+        case JE_NODE_CAST_BOOL_TO_INT: {
+            break;
+        }
+        case JE_NODE_CAST_INT_TO_FLOAT: {
+            break;
+        }
+        case JE_NODE_CAST_STRING_TO_FLOAT: {
+            break;
+        }
+        case JE_NODE_CAST_BOOL_TO_FLOAT: {
+            break;
+        }
+        case JE_NODE_CAST_INT_TO_BOOL: {
+            break;
+        }
+        case JE_NODE_CAST_STRING_TO_BOOL: {
+            break;
+        }
+        case JE_NODE_CAST_FLOAT_TO_BOOL: {
+            break;
+        }
+        case JE_NODE_FUNCTION_CALL_INT: {
+            break;
+        }
+        case JE_NODE_FUNCTION_CALL_FLOAT: {
+            break;
+        }
+        case JE_NODE_FUNCTION_CALL_BOOL: {
+            break;
+        }
+        case JE_NODE_FUNCTION_CALL_STRING: {
+            break;
+        }
         default: {
+            assert(false);
             break;
         }
     }
+
+    return JE_JIT_X86_REG_EAX;
 }
 
+#endif // _M_X64
 #endif // JE_JIT_AVAILABLE
 
 #endif
