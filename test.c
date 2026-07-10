@@ -14,7 +14,8 @@ int main(int argc, char* argv[]) {
 
     //je_bind_function(&ctx, "func", false, &func, JE_TYPE_FLOAT, JE_TYPE_FLOAT, JE_TYPE_FLOAT, NULL);
     je_bind_variable_float(&ctx, "PI", false, 3.14159f);
-    je_compile(&ctx, "(1 + 2)");
+    je_bind_variable_int(&ctx, "val", false, 100);
+    je_compile(&ctx, "((1 + 2) * 3 - 1) * val");
     
     je_eval(&ctx);
 

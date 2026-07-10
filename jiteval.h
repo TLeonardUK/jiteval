@@ -517,32 +517,39 @@ typedef struct je_ast_node_t {
     je_func_def_t*          function;
 } je_ast_node_t;
 
+typedef struct je_jit_register_allocation_t {
+    int                     alloc_count;                        // Number of times the register has been allocated, if > 1 registers are pushed on to the stack to avoid spilling.
+    int                     alloc_index;                        // Constantly incrementing number across all registers, used to see what is most "new"
+} je_jit_register_allocation_t;
+
 typedef struct je_context_t {
-    int                     flags;                              // Flags controling the contexts behaviour.
-    char*                   mem_arena;                          // Block of memory that all dynamically allocated memory is stored in. Used as a stack allocator.
-    size_t                  mem_arena_offset;                   // Next locations in the mem_arena to allocate from.
-    bool                    mem_arena_frozen;                   // If set to true we will assert if allocations are attempted. Used during jit compiling.
-    char*                   transient_mem_arena;                // Block of memory that all transient allocations using during evaluation is stored in. Used as a stack allocator.
-    size_t                  transient_mem_arena_offset;         // Next locations in the transient_mem_arena_offset to allocate from.
-    char*                   source;                             // Pointer to source code string
-    char*                   read_ptr;                           // Read pointer into source string
-    char*                   rewind_read_ptr;                    // Pointer to point in token stream we can rewind to with je_rewind_token_stream
-    je_variable_def_t*      variable_head;                      // Head of the variable linked list.
-    je_func_def_t*          function_head;                      // Head of the function linked list.
-    je_value_t              result;                             // Result of the last evaluation call.
-    int                     error_code;                         // Last error that occured in the context.
-    char                    error_msg[512];                     // Error message from the last failing call.
-    je_ast_node_t*          ast_root;                           // Root node in the ast graph.
-    je_func_def_t*          active_function;                    // Pointer to the function currently being called.
-    je_value_t              function_params[JE_MAX_PARAMETERS]; // Parameters passed into the last function called.
-    je_value_t              function_result;                    // Return value from function called
-    bool                    jit_compiled;                       // If the compiled expression is jit compiled.
-    char*                   jit_executable_memory;              // Executable memory containing the JIT'd code.
-    char*                   jit_write_buffer;                   // Start of buffer to generate JIT code into.
-    int                     jit_write_buffer_len;               // Length of write buffer.
-    char*                   jit_write_ptr;                      // Current write pointer for generating JIT code.
-    bool                    jit_write_buffer_overflow;          // If we ran out of space while emitting JIT code.
-    bool                    compiled;                           // If this context has been compiled.
+    int                             flags;                              // Flags controling the contexts behaviour.
+    char*                           mem_arena;                          // Block of memory that all dynamically allocated memory is stored in. Used as a stack allocator.
+    size_t                          mem_arena_offset;                   // Next locations in the mem_arena to allocate from.
+    bool                            mem_arena_frozen;                   // If set to true we will assert if allocations are attempted. Used during jit compiling.
+    char*                           transient_mem_arena;                // Block of memory that all transient allocations using during evaluation is stored in. Used as a stack allocator.
+    size_t                          transient_mem_arena_offset;         // Next locations in the transient_mem_arena_offset to allocate from.
+    char*                           source;                             // Pointer to source code string
+    char*                           read_ptr;                           // Read pointer into source string
+    char*                           rewind_read_ptr;                    // Pointer to point in token stream we can rewind to with je_rewind_token_stream
+    je_variable_def_t*              variable_head;                      // Head of the variable linked list.
+    je_func_def_t*                  function_head;                      // Head of the function linked list.
+    je_value_t                      result;                             // Result of the last evaluation call.
+    int                             error_code;                         // Last error that occured in the context.
+    char                            error_msg[512];                     // Error message from the last failing call.
+    je_ast_node_t*                  ast_root;                           // Root node in the ast graph.
+    je_func_def_t*                  active_function;                    // Pointer to the function currently being called.
+    je_value_t                      function_params[JE_MAX_PARAMETERS]; // Parameters passed into the last function called.
+    je_value_t                      function_result;                    // Return value from function called
+    bool                            jit_compiled;                       // If the compiled expression is jit compiled.
+    char*                           jit_executable_memory;              // Executable memory containing the JIT'd code.
+    char*                           jit_write_buffer;                   // Start of buffer to generate JIT code into.
+    int                             jit_write_buffer_len;               // Length of write buffer.
+    char*                           jit_write_ptr;                      // Current write pointer for generating JIT code.
+    bool                            jit_write_buffer_overflow;          // If we ran out of space while emitting JIT code.
+    je_jit_register_allocation_t    jit_register_allocation[256];       // Allocation of registers used when JIT compiling code.
+    int                             jit_register_allocation_counter;    // Count of every time a register was allocated.
+    bool                            compiled;                           // If this context has been compiled.
 } je_context_t;
 
 // -----------------------------------------------------------------------
@@ -2935,24 +2942,31 @@ int je_compile(je_context_t* context, const char* source) {
 #define JE_JIT_X86_REG_ESI 6
 #define JE_JIT_X86_REG_EDI 7
 
-#define JE_JIT_X86_OPCODE_RET           0xC3
-#define JE_JIT_X86_OPCODE_PUSH_R32      0x50
-#define JE_JIT_X86_OPCODE_POP_R32       0x58
-#define JE_JIT_X86_OPCODE_ADD_R32_R32   0x01
+#define JE_JIT_X86_OPCODE_RET               0xC3
+#define JE_JIT_X86_OPCODE_PUSH_R32          0x50
+#define JE_JIT_X86_OPCODE_POP_R32           0x58
+#define JE_JIT_X86_OPCODE_ADD_RM32_R32      0x01
+#define JE_JIT_X86_OPCODE_SUB_RM32_R32      0x29
+#define JE_JIT_X86_OPCODE_IMUL_R32_RM32     0x0FAF
+#define JE_JIT_X86_OPCODE_MOV_RM32_IMM32    0xC7
 
 // Some good references if unfamiliar with x86 instruction encoding.
 // http://ref.x86asm.net/geek32-abc.html
 // https://pyokagan.name/blog/2019-09-20-x86encoding/
 
 typedef struct je_jit_x86_modrm_t {
-    uint8_t mod : 2;
-    uint8_t reg : 3;
     uint8_t rm : 3;
+    uint8_t reg : 3;
+    uint8_t mod : 2;
 } je_jit_x86_modrm_t;
 
-void je_jit_emit_prologue(je_context_t* context);
-void je_jit_emit_epilogue(je_context_t* context);
-int  je_jit_emit_node(je_context_t* context, je_ast_node_t* node);
+#pragma optimize("", off)
+
+void je_jit_x86_emit_prologue(je_context_t* context);
+void je_jit_x86_emit_epilogue(je_context_t* context);
+int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node);
+int je_jit_x86_alloc_reg(je_context_t* context);
+void je_jit_x86_free_reg(je_context_t* context, int reg);
 
 int je_compile_jit(je_context_t* context) {
     int ret;
@@ -2964,9 +2978,9 @@ int je_compile_jit(je_context_t* context) {
     context->jit_write_buffer_overflow = false;
 
     context->mem_arena_frozen = true;
-    je_jit_emit_prologue(context);
-    je_jit_emit_node(context, context->ast_root);
-    je_jit_emit_epilogue(context);
+    je_jit_x86_emit_prologue(context);
+    je_jit_x86_emit_node(context, context->ast_root);
+    je_jit_x86_emit_epilogue(context);
     context->mem_arena_frozen = false;
 
     // Ran out of space while trying to emit all JIT code.
@@ -2985,7 +2999,7 @@ int je_compile_jit(je_context_t* context) {
     return JE_RESULT_SUCCESS;
 }
 
-void je_jit_emit_bytes_1(je_context_t* context, uint8_t byte1) {
+void je_jit_x86_emit_bytes_1(je_context_t* context, uint8_t byte1) {
     int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
     int remaining_space = context->jit_write_buffer_len - jit_length;
     if (remaining_space < 1) {
@@ -2995,7 +3009,7 @@ void je_jit_emit_bytes_1(je_context_t* context, uint8_t byte1) {
     *(context->jit_write_ptr++) = byte1;
 }
 
-void je_jit_emit_bytes_2(je_context_t* context, uint8_t byte1, uint8_t byte2) {
+void je_jit_x86_emit_bytes_2(je_context_t* context, uint8_t byte1, uint8_t byte2) {
     int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
     int remaining_space = context->jit_write_buffer_len - jit_length;
     if (remaining_space < 2) {
@@ -3006,7 +3020,7 @@ void je_jit_emit_bytes_2(je_context_t* context, uint8_t byte1, uint8_t byte2) {
     *(context->jit_write_ptr++) = byte2;
 }
 
-void je_jit_emit_bytes_3(je_context_t* context, uint8_t byte1, uint8_t byte2, uint8_t byte3) {
+void je_jit_x86_emit_bytes_3(je_context_t* context, uint8_t byte1, uint8_t byte2, uint8_t byte3) {
     int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
     int remaining_space = context->jit_write_buffer_len - jit_length;
     if (remaining_space < 3) {
@@ -3018,7 +3032,25 @@ void je_jit_emit_bytes_3(je_context_t* context, uint8_t byte1, uint8_t byte2, ui
     *(context->jit_write_ptr++) = byte3;
 }
 
-void je_jit_emit_x86_r32_r32(je_context_t* context, int opcode, int reg1, int reg2) {
+void je_jit_x86_emit_bytes_4(je_context_t* context, uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4) {
+    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
+    int remaining_space = context->jit_write_buffer_len - jit_length;
+    if (remaining_space < 4) {
+        context->jit_write_buffer_overflow = true;
+        return;
+    }
+    *(context->jit_write_ptr++) = byte1;
+    *(context->jit_write_ptr++) = byte2;
+    *(context->jit_write_ptr++) = byte3;
+    *(context->jit_write_ptr++) = byte4;
+}
+
+void je_jit_x86_emit_imm32(je_context_t* context, int immediate) {
+    uint8_t* bytes = (uint8_t*)&immediate;
+    je_jit_x86_emit_bytes_4(context, bytes[0], bytes[1], bytes[2], bytes[3]);
+}
+
+void je_jit_x86_emit_rm32_r32(je_context_t* context, int opcode, int reg1, int reg2) {
     assert(sizeof(je_jit_x86_modrm_t) == 1);
 
     je_jit_x86_modrm_t modrm;
@@ -3026,30 +3058,136 @@ void je_jit_emit_x86_r32_r32(je_context_t* context, int opcode, int reg1, int re
     modrm.reg = reg2;
     modrm.rm = reg1;
 
-    je_jit_emit_bytes_2(context, opcode, *((uint8_t*)&modrm));
+    uint8_t modrm_byte = *((uint8_t*)&modrm);
+    uint8_t prefix_byte = 0;
+    uint8_t opcode_byte = 0;
+
+    if (opcode > 0xFF) {
+        prefix_byte = (opcode >> 8) & 0xFF;
+        opcode_byte = opcode & 0xFF;
+        je_jit_x86_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
+    }
+    else {
+        opcode_byte = opcode;
+        je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
+    }
 }
 
-void je_jit_emit_prologue(je_context_t* context) {
+void je_jit_x86_emit_r32_rm32(je_context_t* context, int opcode, int reg1, int reg2) {
+    je_jit_x86_emit_rm32_r32(context, opcode, reg2, reg1);
+}
+
+void je_jit_x86_emit_rm32_imm32(je_context_t* context, int opcode, int reg1, int imm32) {
+    assert(sizeof(je_jit_x86_modrm_t) == 1);
+
+    je_jit_x86_modrm_t modrm;
+    modrm.mod = 0x3; // register direct addressing
+    modrm.reg = 0;
+    modrm.rm = reg1;
+
+    uint8_t modrm_byte = *((uint8_t*)&modrm);
+    uint8_t prefix_byte = 0;
+    uint8_t opcode_byte = 0;
+
+    if (opcode > 0xFF) {
+        prefix_byte = (opcode >> 8) & 0xFF;
+        opcode_byte = opcode & 0xFF;
+        je_jit_x86_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
+    } else {
+        opcode_byte = opcode;
+        je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
+    }
+    
+    je_jit_x86_emit_imm32(context, imm32);
+}
+
+int je_jit_x86_alloc_exact_reg(je_context_t* context, int reg) {
+    int alloc_index = context->jit_register_allocation_counter++;
+
+    // Is it available?
+    if (context->jit_register_allocation[reg].alloc_count == 0) {
+        context->jit_register_allocation[reg].alloc_count++;
+        context->jit_register_allocation[reg].alloc_index = alloc_index;
+        return reg;
+    }
+
+    // Spill to stack.
+    context->jit_register_allocation[reg].alloc_count++;
+    context->jit_register_allocation[reg].alloc_index = alloc_index;
+
+    // Push original value to stack.
+    je_jit_x86_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + reg);
+
+    return reg;
+}
+
+int je_jit_x86_alloc_reg(je_context_t* context) {
+    int gp_registers[3] = { JE_JIT_X86_REG_EAX, JE_JIT_X86_REG_ECX, JE_JIT_X86_REG_EDX };
+    int gp_registers_num = sizeof(gp_registers) / sizeof(*gp_registers);
+
+    int alloc_index = context->jit_register_allocation_counter++;
+
+    // Find one thats available.
+    for (int i = 0; i < gp_registers_num; i++) {
+        int reg = gp_registers[i];
+        if (context->jit_register_allocation[reg].alloc_count == 0) {
+            context->jit_register_allocation[reg].alloc_count++;
+            context->jit_register_allocation[reg].alloc_index = alloc_index;
+            return reg;
+        }
+    }
+
+    // If non are available, find the oldest one to spill to the stack.
+    int oldest_index = INT32_MAX;
+    int oldest_reg = 0;
+    for (int i = 0; i < gp_registers_num; i++) {
+        int reg = gp_registers[i];
+        if (context->jit_register_allocation[reg].alloc_index < oldest_index) {
+            oldest_index = context->jit_register_allocation[reg].alloc_index;
+            oldest_reg = reg;
+        }
+    }
+
+    // Spill to stack.
+    context->jit_register_allocation[oldest_reg].alloc_count++;
+    context->jit_register_allocation[oldest_reg].alloc_index = alloc_index;
+
+    // Push original value to stack.
+    je_jit_x86_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + oldest_reg);
+
+    return oldest_reg;
+}
+
+void je_jit_x86_free_reg(je_context_t* context, int reg) {
+    context->jit_register_allocation[reg].alloc_count--;
+
+    // If this is a spill register, restore the last value.
+    if (context->jit_register_allocation[reg].alloc_count > 0) {
+        je_jit_x86_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + reg);
+    }
+}
+
+void je_jit_x86_emit_prologue(je_context_t* context) {
     // Store non-volatile registers.
-    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + JE_JIT_X86_REG_EBX); // push ebx
-    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + JE_JIT_X86_REG_ESP); // push esp
-    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + JE_JIT_X86_REG_EBP); // push ebp
-    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + JE_JIT_X86_REG_ESI); // push esi
-    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + JE_JIT_X86_REG_EDI); // push edi
+    je_jit_x86_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + JE_JIT_X86_REG_EBX);  // push ebx
+    je_jit_x86_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + JE_JIT_X86_REG_ESP);  // push esp
+    je_jit_x86_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + JE_JIT_X86_REG_EBP);  // push ebp
+    je_jit_x86_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + JE_JIT_X86_REG_ESI);  // push esi
+    je_jit_x86_emit_bytes_1(context, JE_JIT_X86_OPCODE_PUSH_R32 + JE_JIT_X86_REG_EDI);  // push edi
 }
 
-void je_jit_emit_epilogue(je_context_t* context) {
+void je_jit_x86_emit_epilogue(je_context_t* context) {
     // Restore non-volatile registers.
-    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + JE_JIT_X86_REG_EBX); // pop ebx
-    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + JE_JIT_X86_REG_ESP); // pop esp
-    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + JE_JIT_X86_REG_EBP); // pop ebp
-    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + JE_JIT_X86_REG_ESI); // pop esi
-    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + JE_JIT_X86_REG_EDI); // pop edi
-    je_jit_emit_bytes_1(context, JE_JIT_X86_OPCODE_RET); // ret
+    je_jit_x86_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + JE_JIT_X86_REG_EDI);   // pop edi
+    je_jit_x86_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + JE_JIT_X86_REG_ESI);   // pop esi
+    je_jit_x86_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + JE_JIT_X86_REG_EBP);   // pop ebp
+    je_jit_x86_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + JE_JIT_X86_REG_ESP);   // pop esp
+    je_jit_x86_emit_bytes_1(context, JE_JIT_X86_OPCODE_POP_R32 + JE_JIT_X86_REG_EBX);   // pop ebx
+    je_jit_x86_emit_bytes_1(context, JE_JIT_X86_OPCODE_RET);                            // ret
 }
-
+ 
 // Return value is the register the result is in if applicable.
-int je_jit_emit_node(je_context_t* context, je_ast_node_t* node) {
+int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
     switch (node->type) {
         case JE_NODE_LOGICAL_NOT_BOOL: {
             break;
@@ -3061,7 +3199,11 @@ int je_jit_emit_node(je_context_t* context, je_ast_node_t* node) {
             break;
         }
         case JE_NODE_MUL_INT: {
-            break;
+            int reg1 = je_jit_x86_emit_node(context, node->children[0]);
+            int reg2 = je_jit_x86_emit_node(context, node->children[1]);
+            je_jit_x86_emit_r32_rm32(context, JE_JIT_X86_OPCODE_IMUL_R32_RM32, reg1, reg2); // imul reg1, reg2
+            je_jit_x86_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_DIV_FLOAT: {
             break;
@@ -3076,16 +3218,21 @@ int je_jit_emit_node(je_context_t* context, je_ast_node_t* node) {
             break;
         }
         case JE_NODE_SUB_INT: {
-            break;
+            int reg1 = je_jit_x86_emit_node(context, node->children[0]);
+            int reg2 = je_jit_x86_emit_node(context, node->children[1]);
+            je_jit_x86_emit_rm32_r32(context, JE_JIT_X86_OPCODE_SUB_RM32_R32, reg1, reg2); // sub reg1, reg2
+            je_jit_x86_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_ADD_FLOAT: {
             break;
         }
         case JE_NODE_ADD_INT: {
-            int reg1 = je_jit_emit_node(context, node->children[0]);
-            int reg2 = je_jit_emit_node(context, node->children[1]);
-            je_jit_emit_x86_r32_r32(context, JE_JIT_X86_OPCODE_ADD_R32_R32, JE_JIT_X86_REG_EAX, JE_JIT_X86_REG_EBP); // add eAX, eBP
-            break;
+            int reg1 = je_jit_x86_emit_node(context, node->children[0]);
+            int reg2 = je_jit_x86_emit_node(context, node->children[1]);
+            je_jit_x86_emit_rm32_r32(context, JE_JIT_X86_OPCODE_ADD_RM32_R32, reg1, reg2); // add reg1, reg2
+            je_jit_x86_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_ADD_STRING: {
             break;
@@ -3154,7 +3301,10 @@ int je_jit_emit_node(je_context_t* context, je_ast_node_t* node) {
             break;
         }
         case JE_NODE_VARIABLE_INT: {
-            break;
+            int reg = je_jit_x86_alloc_reg(context);
+            je_jit_x86_emit_r32_imm64(context, JE_JIT_X86_OPCODE_MOV_R32_IMM64, reg, (uint64_t)&node->variable->value.int_value); // mov reg, variable_ptr
+            // todo: load from address
+            return reg;
         }
         case JE_NODE_VARIABLE_FLOAT: {
             break;
@@ -3178,13 +3328,17 @@ int je_jit_emit_node(je_context_t* context, je_ast_node_t* node) {
             break;
         }
         case JE_NODE_INT_LITERAL: {
-            break;
+            int reg = je_jit_x86_alloc_reg(context);
+            je_jit_x86_emit_rm32_imm32(context, JE_JIT_X86_OPCODE_MOV_RM32_IMM32, reg, node->value.int_value); // mov reg, imm32
+            return reg;
         }
         case JE_NODE_STRING_LITERAL: {
             break;
         }
         case JE_NODE_BOOL_LITERAL: {
-            break;
+            int reg = je_jit_x86_alloc_reg(context);
+            je_jit_x86_emit_rm32_imm32(context, JE_JIT_X86_OPCODE_MOV_RM32_IMM32, reg, node->value.bool_value); // mov reg, imm32
+            return reg;
         }
         case JE_NODE_CAST_INT_TO_STRING: {
             break;
@@ -3235,12 +3389,11 @@ int je_jit_emit_node(je_context_t* context, je_ast_node_t* node) {
             break;
         }
         default: {
-            assert(false);
             break;
         }
     }
-
-    return JE_JIT_X86_REG_EAX;
+    assert(false);
+    return 0;
 }
 
 #endif // _M_X64
