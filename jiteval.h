@@ -337,6 +337,7 @@ const char* je_error_msg(je_context_t* context);
 
 // Compiler determination
 #ifdef _MSC_VER
+// Also captures using clang under msvc.
 #define JE_COMPILER_MSVC
 #else
 #error Unknown platform
