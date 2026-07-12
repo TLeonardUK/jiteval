@@ -3989,14 +3989,8 @@ bool je_jit_x86_reg_allocated(je_context_t* context, int reg) {
 void je_jit_x86_emit_prologue(je_context_t* context) {
 #ifdef JE_COMPILER_MSVC
 #ifdef JE_ISA_X64
-    // Store non-volatile registers.
-    // R12:R15 + XMM6:XMM15 are also considered volatile under msvc, we should add code to store those.
-    //je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EDI);
-   // je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_ESI);
-   // je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EBX);
-   // je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EBP);
-   // je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_ESP);
-    //je_jit_x86_emit_sub_r64_imm32(context, JE_JIT_X86_REG_ESP, 40);
+    // In theory we are meant to store volatile registers here, but with the way
+    // we do JIT, I don't think we have an occassion where thats actually needed.
 #else
     je_jit_x86_emit_push_r32(context, JE_JIT_X86_REG_EBP);
     je_jit_x86_emit_mov_r32_r32(context, JE_JIT_X86_REG_EBP, JE_JIT_X86_REG_ESP);
@@ -4062,14 +4056,7 @@ void je_jit_x86_emit_epilogue(je_context_t* context, int return_reg) {
 
 #ifdef JE_COMPILER_MSVC
 #ifdef JE_ISA_X64
-    // Restore non-volatile registers.
-    // R12:R15 + XMM6:XMM15 are also considered volatile under msvc, we should add code to store those.
-    //je_jit_x86_emit_add_r64_imm32(context, JE_JIT_X86_REG_ESP, 40);
-    //je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EDI);
-    //je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_ESI);
-    //je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EBX);
-    //je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EBP);
-    //je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_ESP);
+    // Restore volatile registers (if we ever use them...)
 #else
     je_jit_x86_emit_pop_r32(context, JE_JIT_X86_REG_EBP);
 #endif
