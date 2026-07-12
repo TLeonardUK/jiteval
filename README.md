@@ -10,7 +10,7 @@ JitEval is a single-header library written in C, that provides support for evalu
 It was originally designed for real-time performance critical applications such as video games.
 
 # What type of expressions are supported?
-The library supports all standard C operators, along with function calls and variables.
+The library supports all standard C operators, along with function calls and variables. It uses strongly-typed, cast-sensitive semantics (again like C).
 
 Support data types are: int, float, string, bool.
 
