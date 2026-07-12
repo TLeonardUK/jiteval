@@ -5,7 +5,7 @@
 ![GitHub downloads](https://img.shields.io/github/downloads/TLeonardUK/jiteval/total)
 
 # What is this project?
-JitEval is a single-header library written in C, that provides support for evaluating arbitrary C-style expressions quickly and easily. It optionally supports just-in-time (JIT) compiling the expressions to machine code in situations where the speed is critical.
+JitEval is a single-header library written in C, that provides support for evaluating arbitrary C-style expressions quickly and easily. It uses no external dependencies and is licensed under MIT. It optionally supports just-in-time (JIT) compiling the expressions to machine code in situations where the speed is critical.
 
 It was originally designed for real-time performance critical applications such as video games.
 
@@ -55,9 +55,13 @@ The library is written in ISO C11 and will compile and run on most platforms. JI
 ├── resources/             General resources used for building and packaging - icons/readmes/etc.
 ├── projects/              Projects for different IDE's used for developing the project.
 ├── jiteval.h              The main header file containing the project.
+├── sample.c               Simple example of using the library with explanatory comments.
+├── benchmark.c            Simple benchmark script for JIT/No-JIT, main script used in IDE projects.
 ```
 
 # How can I help?
 Useful pull requests are happily accepted. 
 
 The exception is minor PR's such as typo fixes as they are often done as drive-by PR's by people fluffing their github profiles. Open an issue for those.
+
+No AI generated pull requests are accepted.
