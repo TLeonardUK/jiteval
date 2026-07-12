@@ -180,7 +180,7 @@
 //
 // VERSION HISTORY
 //
-//      (2026-07-12)    1.0    First release
+//      (2026-07-12)    0.1    First release
 //
 // SAMPLE CODE
 // 
