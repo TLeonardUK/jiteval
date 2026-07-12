@@ -9,6 +9,28 @@ JitEval is a single-header library written in C, that provides support for evalu
 
 It was originally designed for real-time performance critical applications such as video games.
 
+# What type of expressions are supported?
+The library supports all standard C operators, along with function calls and variables.
+
+Support data types are: int, float, string, bool.
+
+For full syntax details see the comments at the top of jiteval.h
+
+Some arbitrary examples of supported expressions:
+
+```c
+MY_FLAG_A | MY_FLAG_B
+```
+```c
+sin(3.0f) * cos((b + c) / PI)
+```
+```c
+my_function(a, b) < my_function(d)
+```
+```c
+"Hello World: " + ((string)3.4)
+```
+
 # How can I use it?
 You simple need to drop the header file in your project include it a source file somewhere with JITEVAL_IMPL defined before it, like so:
 
