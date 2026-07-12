@@ -535,18 +535,18 @@ typedef struct je_value_t {
 
 typedef struct je_variable_def_t {
     char*                           name;
-    int                             type : 4;
-    bool                            is_constant : 4;
+    uint8_t                         type : 4;
+    uint8_t                         is_constant : 4;
     je_value_t                      value;
     struct je_variable_def_t*       next;
 } je_variable_def_t;
 
 typedef struct je_func_def_t {
     char*                           name;
-    bool                            is_deterministic : 1;
-    int                             return_type : 4;
-    int                             param_count : 4;
-    int                             parm_types[JE_MAX_PARAMETERS];
+    uint8_t                         is_deterministic : 1;
+    uint8_t                         return_type : 4;
+    uint8_t                         param_count : 4;
+    uint8_t                         parm_types[JE_MAX_PARAMETERS];
     je_func_t                       function;
     struct je_func_def_t*           next;
 } je_func_def_t;
@@ -1429,8 +1429,6 @@ int je_bind_variable_bool(je_context_t* context, const char* name, bool is_const
 }
 
 int je_bind_variable_string(je_context_t* context, const char* name, bool is_constant, const char* value) {
-    size_t value_length = strlen(value);
-
     je_variable_def_t* variable = NULL;
     int ret = je_find_or_create_variable(context, name, JE_TYPE_STRING, &variable);
     if (ret < 0) {
@@ -1839,7 +1837,6 @@ int je_read_token(je_context_t* context, je_token_t* tok) {
                 }
             // Number (or + / - operator)
             } else if ((c >= '0' && c <= '9') || c == '.') {
-                char start_c = c;
                 tok->type = JE_TOK_INT;
                 int found_hex = 0;
                 int found_exponent = 0;
