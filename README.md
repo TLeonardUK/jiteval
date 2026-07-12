@@ -7,7 +7,7 @@
 # What is this project?
 JitEval is a single-header library written in C, that provides support for evaluating arbitrary C-style expressions quickly and easily. It uses no external dependencies and is licensed under MIT. It optionally supports just-in-time (JIT) compiling the expressions to machine code in situations where the speed is critical.
 
-It was originally designed for real-time performance critical applications such as video games.
+It was originally designed for real-time, performance critical, applications such as video games.
 
 # What type of expressions are supported?
 The library supports all standard C operators, along with function calls and variables. It uses strongly-typed, cast-sensitive semantics (again like C).
