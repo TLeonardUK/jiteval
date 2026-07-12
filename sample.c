@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
 
     // Allocate and create the context - the context stores all state specific
     // information like binded variables/function/etc. All memory is also allocated
-    // at this point and no dynamic allocation happens beyond here.
+    // at this point and no dynamic allocation happens beyond here (except for allocating JIT executable memory).
     je_context_t ctx;
     je_new_context(&ctx, JE_FLAG_NONE);
     

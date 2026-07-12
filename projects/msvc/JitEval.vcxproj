@@ -133,14 +133,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="jiteval.h" />
+    <ClInclude Include="..\..\jiteval.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="sample.c">
+    <ClCompile Include="..\..\sample.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="benchmark.c" />
+    <ClCompile Include="..\..\benchmark.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

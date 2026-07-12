@@ -589,7 +589,7 @@ typedef struct je_context_t {
 // PLATFORM SPECIFIC CODE
 // -----------------------------------------------------------------------
 
-#ifdef JE_JIT_ENABLED
+#ifdef JE_JIT_AVAILABLE
 #ifdef JE_PLATFORM_WINDOWS
 int je_alloc_executable(je_context_t* context, const char* code, int code_size, char** output) {
     SYSTEM_INFO system_info;
@@ -615,7 +615,7 @@ int je_free_executable(je_context_t* context, void* memory) {
 #else
 #error Implementation required
 #endif
-#endif // JE_JIT_ENABLED
+#endif // JE_JIT_AVAILABLE
 
 // -----------------------------------------------------------------------
 // UTILITY FUNCTIONS
