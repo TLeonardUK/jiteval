@@ -19,7 +19,7 @@ For full syntax details see the comments at the top of jiteval.h
 Some arbitrary examples of supported expressions:
 
 ```c
-MY_FLAG_A | MY_FLAG_B
+(MY_FLAG_A | MY_FLAG_B) & ~MY_FLAG_C
 ```
 ```c
 sin(3.0f) * cos((b + c) / PI)
