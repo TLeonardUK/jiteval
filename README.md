@@ -66,7 +66,9 @@ Extensive documentation of the API's available to you are located in the comment
 The latest released version of the header file is available on the github releases page - https://github.com/TLeonardUK/jiteval/releases
 
 # What currently works?
-The library is written in ISO C11 and will compile and run on most platforms. JIT compiling is currently only available for x86_64 under msvc, but will be expanded to other compilers and ISA's over time.
+The library is written in ISO C11 and will compile and run on most platforms. 
+
+JIT compiling is currently only available for x86/x64 under msvc, but will be expanded to other compilers and ISA's over time.
 
 # Whats in the repository?
 ```

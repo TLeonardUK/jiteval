@@ -343,8 +343,10 @@ const char* je_error_msg(je_context_t* context);
 #endif
 
 // ISA determination.
-#ifdef _M_X64 
-#define JE_ISA_AMD64
+#if defined(_M_X64) 
+#define JE_ISA_X64
+#elif defined(_M_IX86)
+#define JE_ISA_X86
 #endif
 
 #ifdef JE_COMPILER_MSVC
@@ -367,7 +369,7 @@ const char* je_error_msg(je_context_t* context);
 #include <stdint.h>
 
 // Only support JIT for msvc/x64 for the moment.
-#if defined(JE_COMPILER_MSVC) && defined(JE_ISA_AMD64)
+#if defined(JE_COMPILER_MSVC) && (defined(JE_ISA_X64) || defined(JE_ISA_X86))
 #define JE_JIT_AVAILABLE
 #endif
 
@@ -728,7 +730,7 @@ int je_realloc_string(je_context_t* context, const char* value, je_value_t* resu
         return ret;
     }
     strncpy(result->string_value, value, len);
-    result->string_value_len = (int)len;
+    result->string_value_len = (uint16_t)len;
 
     return JE_RESULT_SUCCESS;
 }
@@ -1601,7 +1603,7 @@ int je_return_string(je_context_t* context, const char* result) {
         return ret;
     }
     strncpy(context->function_result.string_value, result, len);
-    context->function_result.string_value_len = (int)len;
+    context->function_result.string_value_len = (uint16_t)len;
 
     return JE_RESULT_SUCCESS;
 }
@@ -3288,7 +3290,7 @@ int je_compile(je_context_t* context, const char* source) {
 }
 
 #ifdef JE_JIT_AVAILABLE
-#ifdef JE_ISA_AMD64
+#if defined(JE_ISA_X64) || defined(JE_ISA_X86)
 
 #define JE_JIT_X86_REG_EAX                                      (0)
 #define JE_JIT_X86_REG_ECX                                      (1)
@@ -3628,12 +3630,17 @@ void je_jit_x86_emit_mov_r64_addr_r64_direct(je_context_t* context, int dst, int
     context->jit_instruction_num++;
 }
 
-void je_jit_x86_emit_mov_r64_addr_imm8(je_context_t* context, int dst, uint8_t imm8) {
-    uint8_t rex_byte = je_jit_x86_encode_rex(1, 0, 0, 0);
-    uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_MEMORY_ADDRESSING_NO_DISPLACEMENT, 0, dst);
-    uint8_t opcode_byte = 0xC6; // MOV r/m8 imm8
-    je_jit_x86_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
-    je_jit_x86_emit_imm8(context, imm8);
+void je_jit_x86_emit_mov_r32_direct_r32_addr(je_context_t* context, int dst, int src) {
+    uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_MEMORY_ADDRESSING_NO_DISPLACEMENT, dst, src);
+    uint8_t opcode_byte = 0x8B; // MOV r16/32/64 r/m16/32/64
+    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
+    context->jit_instruction_num++;
+}
+
+void je_jit_x86_emit_mov_r32_addr_r32_direct(je_context_t* context, int dst, int src) {
+    uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_MEMORY_ADDRESSING_NO_DISPLACEMENT, src, dst);
+    uint8_t opcode_byte = 0x89; // MOV r/m16/32/64 r16/32/64
+    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
     context->jit_instruction_num++;
 }
 
@@ -3981,6 +3988,7 @@ bool je_jit_x86_reg_allocated(je_context_t* context, int reg) {
 
 void je_jit_x86_emit_prologue(je_context_t* context) {
 #ifdef JE_COMPILER_MSVC
+#ifdef JE_ISA_X64
     // Store non-volatile registers.
     // R12:R15 + XMM6:XMM15 are also considered volatile under msvc, we should add code to store those.
     //je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EDI);
@@ -3989,6 +3997,10 @@ void je_jit_x86_emit_prologue(je_context_t* context) {
    // je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EBP);
    // je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_ESP);
     //je_jit_x86_emit_sub_r64_imm32(context, JE_JIT_X86_REG_ESP, 40);
+#else
+    je_jit_x86_emit_push_r32(context, JE_JIT_X86_REG_EBP);
+    je_jit_x86_emit_mov_r32_r32(context, JE_JIT_X86_REG_EBP, JE_JIT_X86_REG_ESP);
+#endif
 #else
 #error compiler-specific implementation required
 #endif
@@ -4002,9 +4014,15 @@ void je_jit_x86_emit_epilogue(je_context_t* context, int return_reg) {
         case JE_TYPE_INT: {
             int addr_reg = je_jit_x86_alloc_alu_reg(context);
 
+#ifdef JE_ISA_X64
             uint64_t address = (uint64_t)&context->result.int_value;
             je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
             je_jit_x86_emit_mov_r64_addr_r32_direct(context, addr_reg, return_reg);
+#else
+            uint32_t address = (uint32_t)&context->result.int_value;
+            je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
+            je_jit_x86_emit_mov_r32_addr_r32_direct(context, addr_reg, return_reg);
+#endif
 
             je_jit_x86_free_reg(context, addr_reg);
             break;
@@ -4012,9 +4030,15 @@ void je_jit_x86_emit_epilogue(je_context_t* context, int return_reg) {
         case JE_TYPE_STRING: {
             int addr_reg = je_jit_x86_alloc_alu_reg(context);
 
+#ifdef JE_ISA_X64
             uint64_t address = (uint64_t)&context->result.string_value;
             je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
             je_jit_x86_emit_mov_r64_addr_r64_direct(context, addr_reg, return_reg);
+#else
+            uint32_t address = (uint32_t)&context->result.string_value;
+            je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
+            je_jit_x86_emit_mov_r32_addr_r32_direct(context, addr_reg, return_reg);
+#endif
 
             je_jit_x86_free_reg(context, addr_reg);
             break;
@@ -4022,8 +4046,13 @@ void je_jit_x86_emit_epilogue(je_context_t* context, int return_reg) {
         case JE_TYPE_FLOAT: {
             int alu_reg = je_jit_x86_alloc_alu_reg(context);
 
+#ifdef JE_ISA_X64
             uint64_t address = (uint64_t)&context->result.float_value;
             je_jit_x86_emit_mov_r64_imm64(context, alu_reg, address);
+#else
+            uint32_t address = (uint32_t)&context->result.float_value;
+            je_jit_x86_emit_mov_r32_imm32(context, alu_reg, address);
+#endif
 
             je_jit_x86_emit_movss_r32_xmm32(context, alu_reg, return_reg);
             je_jit_x86_free_reg(context, alu_reg);
@@ -4032,6 +4061,7 @@ void je_jit_x86_emit_epilogue(je_context_t* context, int return_reg) {
     }
 
 #ifdef JE_COMPILER_MSVC
+#ifdef JE_ISA_X64
     // Restore non-volatile registers.
     // R12:R15 + XMM6:XMM15 are also considered volatile under msvc, we should add code to store those.
     //je_jit_x86_emit_add_r64_imm32(context, JE_JIT_X86_REG_ESP, 40);
@@ -4040,6 +4070,9 @@ void je_jit_x86_emit_epilogue(je_context_t* context, int return_reg) {
     //je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EBX);
     //je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EBP);
     //je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_ESP);
+#else
+    je_jit_x86_emit_pop_r32(context, JE_JIT_X86_REG_EBP);
+#endif
 #else
 #error compiler-specific implementation required
 #endif
@@ -4054,33 +4087,57 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
         switch (node->function->parm_types[i]) {
             case JE_TYPE_INT: {
                 int addr_reg = je_jit_x86_alloc_alu_reg(context);
+#ifdef JE_ISA_X64
                 uint64_t address = (uint64_t)&context->function_params[i].int_value;
                 je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
                 je_jit_x86_emit_mov_r64_addr_r32_direct(context, addr_reg, reg1);
+#else
+                uint32_t address = (uint32_t)&context->function_params[i].int_value;
+                je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
+                je_jit_x86_emit_mov_r32_addr_r32_direct(context, addr_reg, reg1);
+#endif
                 je_jit_x86_free_reg(context, addr_reg);
                 break;
             }
             case JE_TYPE_BOOL: {
                 int addr_reg = je_jit_x86_alloc_alu_reg(context);
+#ifdef JE_ISA_X64
                 uint64_t address = (uint64_t)&context->function_params[i].bool_value;
                 je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
                 je_jit_x86_emit_mov_r64_addr_r32_direct(context, addr_reg, reg1);
+#else
+                uint32_t address = (uint32_t)&context->function_params[i].bool_value;
+                je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
+                je_jit_x86_emit_mov_r32_addr_r32_direct(context, addr_reg, reg1);
+#endif
                 je_jit_x86_free_reg(context, addr_reg);
                 break;
             }
             case JE_TYPE_FLOAT: {
                 int addr_reg = je_jit_x86_alloc_alu_reg(context);
+#ifdef JE_ISA_X64
                 uint64_t address = (uint64_t)&context->function_params[i].float_value;
                 je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
                 je_jit_x86_emit_movss_r32_xmm32(context, addr_reg, reg1);
+#else
+                uint32_t address = (uint32_t)&context->function_params[i].float_value;
+                je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
+                je_jit_x86_emit_movss_r32_xmm32(context, addr_reg, reg1);
+#endif
                 je_jit_x86_free_reg(context, addr_reg);
                 break;
             }
             case JE_TYPE_STRING: {
                 int addr_reg = je_jit_x86_alloc_alu_reg(context);
+#ifdef JE_ISA_X64
                 uint64_t address = (uint64_t)&context->function_params[i].string_value;
                 je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
                 je_jit_x86_emit_mov_r64_addr_r64_direct(context, addr_reg, reg1);
+#else
+                uint32_t address = (uint64_t)&context->function_params[i].string_value;
+                je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
+                je_jit_x86_emit_mov_r32_addr_r32_direct(context, addr_reg, reg1);
+#endif
                 je_jit_x86_free_reg(context, addr_reg);
                 break;
             }
@@ -4093,14 +4150,13 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     // on x64 for passing arguments :cry:
 
 #ifdef JE_COMPILER_MSVC
+#ifdef JE_ISA_X64
     // Store registers we are going to use.
     je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_ECX);
     je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EDX);
 
-    uint64_t address = 0;
-
     // Store the active_function pointer
-    address = (uint64_t)&context->active_function;
+    uint64_t address = (uint64_t)&context->active_function;
     je_jit_x86_emit_mov_r64_imm64(context, JE_JIT_X86_REG_ECX, address);
     je_jit_x86_emit_mov_r64_imm64(context, JE_JIT_X86_REG_EDX, (uint64_t)node->function);
     je_jit_x86_emit_mov_r64_addr_r64_direct(context, JE_JIT_X86_REG_ECX, JE_JIT_X86_REG_EDX);
@@ -4115,8 +4171,36 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     je_jit_x86_emit_nop(context);
 
     // Restore registers we used.
+    je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_ECX);
+    je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EDX);
+#else
+    // Store registers we are going to use.
+    je_jit_x86_emit_push_r32(context, JE_JIT_X86_REG_ECX);
+    je_jit_x86_emit_push_r32(context, JE_JIT_X86_REG_EDX);
+
+    // Store the active_function pointer
+    uint32_t address = (uint32_t)&context->active_function;
+    je_jit_x86_emit_mov_r32_imm32(context, JE_JIT_X86_REG_ECX, address);
+    je_jit_x86_emit_mov_r32_imm32(context, JE_JIT_X86_REG_EDX, (uint32_t)node->function);
+    je_jit_x86_emit_mov_r32_addr_r32_direct(context, JE_JIT_X86_REG_ECX, JE_JIT_X86_REG_EDX);
+
+    // Push the context agument
+    address = (uint32_t)context;
+    je_jit_x86_emit_push_imm32(context, address);
+
+    // Call function
+    address = (uint32_t)node->function->function;
+    je_jit_x86_emit_mov_r32_imm32(context, JE_JIT_X86_REG_EDX, address);
+    je_jit_x86_emit_call(context, JE_JIT_X86_REG_EDX);
+    je_jit_x86_emit_nop(context);
+
+    // Pop value off stack.
+    je_jit_x86_emit_add_r32_imm32(context, JE_JIT_X86_REG_ESP, 4);
+
+    // Restore registers we used.
     je_jit_x86_emit_pop_r32(context, JE_JIT_X86_REG_ECX);
     je_jit_x86_emit_pop_r32(context, JE_JIT_X86_REG_EDX);
+#endif
 #else
 #error compiler-specific implementation required
 #endif
@@ -4128,36 +4212,60 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
         case JE_TYPE_INT: {
             ret_reg = je_jit_x86_alloc_alu_reg(context);
             int addr_reg = je_jit_x86_alloc_alu_reg(context);
+#ifdef JE_ISA_X64
             uint64_t address = (uint64_t)&context->function_result.int_value;
             je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
             je_jit_x86_emit_mov_r32_direct_r64_addr(context, ret_reg, addr_reg);
+#else
+            uint32_t address = (uint32_t)&context->function_result.int_value;
+            je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
+            je_jit_x86_emit_mov_r32_direct_r32_addr(context, ret_reg, addr_reg);
+#endif
             je_jit_x86_free_reg(context, addr_reg);
             break;
         }
         case JE_TYPE_BOOL: {
             ret_reg = je_jit_x86_alloc_alu_reg(context);
             int addr_reg = je_jit_x86_alloc_alu_reg(context);
+#ifdef JE_ISA_X64
             uint64_t address = (uint64_t)&context->function_result.bool_value;
             je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
             je_jit_x86_emit_mov_r32_direct_r64_addr(context, ret_reg, addr_reg);
+#else
+            uint32_t address = (uint32_t)&context->function_result.bool_value;
+            je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
+            je_jit_x86_emit_mov_r32_direct_r32_addr(context, ret_reg, addr_reg);
+#endif
             je_jit_x86_free_reg(context, addr_reg);
             break;
         }
         case JE_TYPE_FLOAT: {
             ret_reg = je_jit_x86_alloc_xmm_reg(context);
             int addr_reg = je_jit_x86_alloc_alu_reg(context);
+#ifdef JE_ISA_X64
             uint64_t address = (uint64_t)&context->function_result.float_value;
             je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
             je_jit_x86_emit_movss_xmm32_r32(context, ret_reg, addr_reg);
+#else
+            uint32_t address = (uint32_t)&context->function_result.float_value;
+            je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
+            je_jit_x86_emit_movss_xmm32_r32(context, ret_reg, addr_reg);
+#endif
             je_jit_x86_free_reg(context, addr_reg);
             break;
         }
         case JE_TYPE_STRING: {
             ret_reg = je_jit_x86_alloc_alu_reg(context);
             int addr_reg = je_jit_x86_alloc_alu_reg(context);
+#ifdef JE_ISA_X64
             uint64_t address = (uint64_t)&context->function_result.string_value;
             je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
             je_jit_x86_emit_mov_r64_direct_r64_addr(context, ret_reg, addr_reg);
+#else
+            uint32_t address = (uint64_t)&context->function_result.string_value;
+            je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
+            je_jit_x86_emit_mov_r32_direct_r32_addr(context, ret_reg, addr_reg);
+#endif
             je_jit_x86_free_reg(context, addr_reg);
             break;
         }
@@ -4311,9 +4419,15 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
         case JE_NODE_VARIABLE_INT: {
             int addr_reg = je_jit_x86_alloc_alu_reg(context);
             int dst_reg = je_jit_x86_alloc_alu_reg(context);
+#ifdef JE_ISA_X64
             uint64_t address = (uint64_t)&node->variable->value.int_value;
             je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
             je_jit_x86_emit_mov_r32_direct_r64_addr(context, dst_reg, addr_reg);
+#else
+            uint32_t address = (uint32_t)&node->variable->value.int_value;
+            je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
+            je_jit_x86_emit_mov_r32_direct_r32_addr(context, dst_reg, addr_reg);
+#endif
             je_jit_x86_free_reg(context, addr_reg);
             return dst_reg;
         }
@@ -4395,9 +4509,15 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
         case JE_NODE_VARIABLE_BOOL: {
             int addr_reg = je_jit_x86_alloc_alu_reg(context);
             int dst_reg = je_jit_x86_alloc_alu_reg(context);
+#ifdef JE_ISA_X64
             uint64_t address = (uint64_t)&node->variable->value.bool_value;
             je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
             je_jit_x86_emit_mov_r32_direct_r64_addr(context, dst_reg, addr_reg);
+#else
+            uint32_t address = (uint32_t)&node->variable->value.bool_value;
+            je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
+            je_jit_x86_emit_mov_r32_direct_r32_addr(context, dst_reg, addr_reg);
+#endif
             je_jit_x86_free_reg(context, addr_reg);
             break;
         }
@@ -4523,8 +4643,13 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
             int alu_reg = je_jit_x86_alloc_alu_reg(context);
             int xmm_reg = je_jit_x86_alloc_xmm_reg(context);
 
+#ifdef JE_ISA_X64
             uint64_t address = (uint64_t)&node->variable->value.float_value;
             je_jit_x86_emit_mov_r64_imm64(context, alu_reg, address);
+#else
+            uint32_t address = (uint32_t)&node->variable->value.float_value;
+            je_jit_x86_emit_mov_r32_imm32(context, alu_reg, address);
+#endif
 
             je_jit_x86_emit_movss_xmm32_r32(context, xmm_reg, alu_reg);
             je_jit_x86_free_reg(context, alu_reg);
@@ -4548,8 +4673,13 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
             int alu_reg = je_jit_x86_alloc_alu_reg(context);
             int xmm_reg = je_jit_x86_alloc_xmm_reg(context);
 
+#ifdef JE_ISA_X64
             uint64_t address = (uint64_t)&node->value.float_value;
             je_jit_x86_emit_mov_r64_imm64(context, alu_reg, address);
+#else
+            uint32_t address = (uint32_t)&node->value.float_value;
+            je_jit_x86_emit_mov_r32_imm32(context, alu_reg, address);
+#endif
 
             je_jit_x86_emit_movss_xmm32_r32(context, xmm_reg, alu_reg);
             je_jit_x86_free_reg(context, alu_reg);
@@ -4583,16 +4713,27 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
         case JE_NODE_VARIABLE_STRING: {
             int addr_reg = je_jit_x86_alloc_alu_reg(context);
             int dst_reg = je_jit_x86_alloc_alu_reg(context);
+#ifdef JE_ISA_X64
             uint64_t address = (uint64_t)&node->variable->value.string_value;
             je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
             je_jit_x86_emit_mov_r64_direct_r64_addr(context, dst_reg, addr_reg);
+#else
+            uint32_t address = (uint32_t)&node->variable->value.string_value;
+            je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
+            je_jit_x86_emit_mov_r32_direct_r32_addr(context, dst_reg, addr_reg);
+#endif
             je_jit_x86_free_reg(context, addr_reg);
             return dst_reg;
         }
         case JE_NODE_STRING_LITERAL: {
             int dst_reg = je_jit_x86_alloc_alu_reg(context);
+#ifdef JE_ISA_X64
             uint64_t address = (uint64_t)node->value.string_value;
             je_jit_x86_emit_mov_r64_imm64(context, dst_reg, address);
+#else
+            uint32_t address = (uint32_t)node->value.string_value;
+            je_jit_x86_emit_mov_r32_imm32(context, dst_reg, address);
+#endif
             return dst_reg;
         }
         case JE_NODE_FUNCTION_CALL_STRING: {

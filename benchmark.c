@@ -107,14 +107,16 @@ void run_benchmark(const char* name, int flags) {
     {
         const int k_iterations = 1000000;
 
+        float output_value = 0.0f;
         timer_t timer;
         timer_start(&timer);
         for (int i = 0; i < k_iterations; i++) {
             je_eval(&ctx);
+            je_result_float(&ctx, &output_value);
         }
         timer_stop(&timer);
         double elapsed = timer_elapsed_ms(&timer);
-        printf("Eval took: %.8f ms (%.8f ms per iterations)\n", elapsed, elapsed / k_iterations);
+        printf("Eval took %.8f ms (%.8f ms per iterations), result was %.8f\n", elapsed, elapsed / k_iterations, output_value);
     }
 
     je_free_context(&ctx);
