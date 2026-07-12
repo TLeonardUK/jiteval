@@ -180,7 +180,7 @@
 //
 // VERSION HISTORY
 //
-//      (2026-07-07)    1.0    First release
+//      (2026-07-12)    1.0    First release
 //
 // SAMPLE CODE
 // 
@@ -210,7 +210,7 @@ extern "C" {
 // Maximum dynamic memory allocation of a context is double this, plus
 // any additional memory needed for JIT compiled memory pages.
 #ifndef JE_MEM_ARENA_SIZE
-#define JE_MEM_ARENA_SIZE               (4 * 1024)
+#define JE_MEM_ARENA_SIZE               (8 * 1024)
 #endif
 
 // Alignment of allocations from the memory arena. In general should not
@@ -238,7 +238,7 @@ extern "C" {
 // HEADER
 // -----------------------------------------------------------------------
 
-// All failure results are negative, all success results are positive.
+// Note: All failure results are negative, all success results are positive.
 
 #define JE_RESULT_VALUE_IS_CONSTANT                 (-24)   // Function or variable is constant and cannot be changed.
 #define JE_RESULT_PARAMETER_INDEX_OUT_OF_BOUNDS     (-23)   // Attempt to get a parameter index beyond the number of parameters the function takes.
@@ -266,13 +266,13 @@ extern "C" {
 #define JE_RESULT_FAILED                            (-1)    // Operation failed (generic)
 #define JE_RESULT_SUCCESS                           (0)     // Operation succesful
 
-#define JE_TYPE_UNSET                               (0)
+#define JE_TYPE_UNSET                               (0)     // Used as a sentinel value, not expected to be passed in by public API.
 #define JE_TYPE_INT                                 (1)
 #define JE_TYPE_BOOL                                (2)
 #define JE_TYPE_FLOAT                               (3)
 #define JE_TYPE_STRING                              (4)
 
-#define JE_FLAG_NONE                                (0)     
+#define JE_FLAG_NONE                                (0)     // Default behaviour, no changes.
 #define JE_FLAG_NO_OPTIMIZATION                     (1)     // Disables any optimization passes on the expression.
 #define JE_FLAG_NO_JIT                              (2)     // Disables jit compiling of the expression 
 #define JE_FLAG_DEBUG_LOGGING                       (4)     // Prints out the AST at different stages of compilation, among other things, used for debugging.
@@ -311,9 +311,30 @@ const char* je_error_msg(je_context_t* context);
 
 #ifdef JITEVAL_IMPL
 
+// Platform determination
+#ifdef _WIN32
+#define JE_PLATFORM_WINDOWS
+#endif
+
+// Compiler determination
 #ifdef _MSC_VER
+#define JE_COMPILER_MSVC
+#else
+#error Unknown platform
+#endif
+
+// ISA determination.
+#ifdef _M_X64 
+#define JE_ISA_AMD64
+#endif
+
+#ifdef JE_COMPILER_MSVC
 #define _CRT_SECURE_NO_WARNINGS
 #define _CRT_NONSTDC_NO_DEPRECATE
+#endif
+
+#ifdef JE_PLATFORM_WINDOWS
+#include <Windows.h>
 #endif
 
 #include <memory.h>
@@ -326,12 +347,9 @@ const char* je_error_msg(je_context_t* context);
 #include <assert.h>
 #include <stdint.h>
 
-// Only support windows/x64 for the moment.
-#ifdef _WIN32
-#ifdef _M_X64
+// Only support JIT for msvc/x64 for the moment.
+#if defined(JE_COMPILER_MSVC) && defined(JE_ISA_AMD64)
 #define JE_JIT_AVAILABLE
-#endif
-#include <Windows.h>
 #endif
 
 // -----------------------------------------------------------------------
@@ -466,61 +484,68 @@ const char* je_error_msg(je_context_t* context);
 
 // TODO: Replace pointers with offsets to reduce sizes?
 
+#ifdef JE_COMPILER_MSVC
+// Smaller size gets us more speed than the miss-alignment penalty.
+#pragma pack(push, 1) 
+#endif
+
 typedef struct je_token_t {
-    int                     type;
-    char*                   source_ptr;                                 // Pointer to where the token is in the source string.
-    int                     source_len;                                 // Length of token in the source string.    
+    int                             type;
+    char*                           source_ptr;                         // Pointer to where the token is in the source string.
+    int                             source_len;                         // Length of token in the source string.    
     union {
-        int                 int_value;
-        int                 bool_value;
-        float               float_value;
-        char*               string_value;
+        int                         int_value;
+        int                         bool_value;
+        float                       float_value;
+        char*                       string_value;
     };
 } je_token_t;
 
 typedef struct je_value_t {
-    uint8_t                 type;
-    uint16_t                string_value_len;
     union {
-        int                 int_value;
-        int                 bool_value;
-        float               float_value;
-        char*               string_value;
+        int                         int_value;
+        int                         bool_value;
+        float                       float_value;
+        char*                       string_value;
     };
+    uint8_t                         type;
+    uint16_t                        string_value_len;
 } je_value_t;
 
 typedef struct je_variable_def_t {
-    char*                       name;
-    int                         type : 4;
-    bool                        is_constant : 4;
-    je_value_t                  value;
-    struct je_variable_def_t*   next;
+    char*                           name;
+    int                             type : 4;
+    bool                            is_constant : 4;
+    je_value_t                      value;
+    struct je_variable_def_t*       next;
 } je_variable_def_t;
 
 typedef struct je_func_def_t {
-    char*                   name;
-    bool                    is_deterministic : 1;
-    int                     return_type : 4;
-    int                     param_count : 4;
-    int                     parm_types[JE_MAX_PARAMETERS];
-    je_func_t               function;
-    struct je_func_def_t*   next;
+    char*                           name;
+    bool                            is_deterministic : 1;
+    int                             return_type : 4;
+    int                             param_count : 4;
+    int                             parm_types[JE_MAX_PARAMETERS];
+    je_func_t                       function;
+    struct je_func_def_t*           next;
 } je_func_def_t;
 
 typedef struct je_ast_node_t {
-    int                     type : 8;
-    int                     param_count : 8;
-    int                     return_type : 7;
-    bool                    is_constant : 1;
-    struct je_ast_node_t*   children[JE_MAX_PARAMETERS];
-    je_value_t              value;
-    je_variable_def_t*      variable;
-    je_func_def_t*          function;
+    union {
+        je_value_t                  value;                              // Value for literals.
+        je_variable_def_t*          variable;
+        je_func_def_t*              function;
+    };
+    struct je_ast_node_t*           children[JE_MAX_PARAMETERS];        // TODO: Dynamically allocate array to reduce size.
+    uint8_t                         type : 8;
+    uint8_t                         param_count : 8;
+    uint8_t                         return_type : 7;
+    uint8_t                         is_constant : 1;
 } je_ast_node_t;
 
 typedef struct je_jit_register_allocation_t {
-    int                     alloc_count;                                // Number of times the register has been allocated, if > 1 registers are pushed on to the stack to avoid spilling.
-    int                     alloc_index;                                // Constantly incrementing number across all registers, used to see what is most "new"
+    int                             alloc_count;                        // Number of times the register has been allocated, if > 1 registers are pushed on to the stack to avoid spilling.
+    int                             alloc_index;                        // Constantly incrementing number across all registers, used to see what is most "new"
 } je_jit_register_allocation_t;
 
 typedef struct je_context_t {
@@ -548,18 +573,24 @@ typedef struct je_context_t {
     int                             jit_write_buffer_len;               // Length of write buffer.
     char*                           jit_write_ptr;                      // Current write pointer for generating JIT code.
     bool                            jit_write_buffer_overflow;          // If we ran out of space while emitting JIT code.
-    je_jit_register_allocation_t    jit_register_allocation[256];       // Allocation of registers used when JIT compiling code.
+    je_jit_register_allocation_t    jit_register_allocation[64];        // Allocation of registers used when JIT compiling code.
     int                             jit_register_allocation_counter;    // Count of every time a register was allocated.
     int                             jit_instruction_num;                // Number of instructions in the JIT code
     int                             jit_code_bytes;                     // Number of bytes the JIT code takes up.
     bool                            compiled;                           // If this context has been compiled.
 } je_context_t;
 
+#ifdef JE_COMPILER_MSVC
+// Smaller size gets us more speed than the miss-alignment penalty.
+#pragma pack(pop)
+#endif
+
 // -----------------------------------------------------------------------
 // PLATFORM SPECIFIC CODE
 // -----------------------------------------------------------------------
 
-#ifdef _WIN32
+#ifdef JE_JIT_ENABLED
+#ifdef JE_PLATFORM_WINDOWS
 int je_alloc_executable(je_context_t* context, const char* code, int code_size, char** output) {
     SYSTEM_INFO system_info;
     GetSystemInfo(&system_info);
@@ -582,10 +613,9 @@ int je_free_executable(je_context_t* context, void* memory) {
     return JE_RESULT_SUCCESS;
 }
 #else
-#if JE_JIT_ENABLED
-#error Jit enabled but missing implementation.
+#error Implementation required
 #endif
-#endif
+#endif // JE_JIT_ENABLED
 
 // -----------------------------------------------------------------------
 // UTILITY FUNCTIONS
@@ -3062,7 +3092,7 @@ int je_compile(je_context_t* context, const char* source) {
 }
 
 #ifdef JE_JIT_AVAILABLE
-#ifdef _M_X64
+#ifdef JE_ISA_AMD64
 
 #define JE_JIT_X86_REG_EAX                                      (0)
 #define JE_JIT_X86_REG_ECX                                      (1)
@@ -3754,6 +3784,7 @@ bool je_jit_x86_reg_allocated(je_context_t* context, int reg) {
 }
 
 void je_jit_x86_emit_prologue(je_context_t* context) {
+#ifdef JE_COMPILER_MSVC
     // Store non-volatile registers.
     // R12:R15 + XMM6:XMM15 are also considered volatile under msvc, we should add code to store those.
     //je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EDI);
@@ -3762,6 +3793,9 @@ void je_jit_x86_emit_prologue(je_context_t* context) {
    // je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EBP);
    // je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_ESP);
     //je_jit_x86_emit_sub_r64_imm32(context, JE_JIT_X86_REG_ESP, 40);
+#else
+#error compiler-specific implementation required
+#endif
 }
 
 void je_jit_x86_emit_epilogue(je_context_t* context, int return_reg) {
@@ -3801,6 +3835,7 @@ void je_jit_x86_emit_epilogue(je_context_t* context, int return_reg) {
         }
     }
 
+#ifdef JE_COMPILER_MSVC
     // Restore non-volatile registers.
     // R12:R15 + XMM6:XMM15 are also considered volatile under msvc, we should add code to store those.
     //je_jit_x86_emit_add_r64_imm32(context, JE_JIT_X86_REG_ESP, 40);
@@ -3809,6 +3844,9 @@ void je_jit_x86_emit_epilogue(je_context_t* context, int return_reg) {
     //je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EBX);
     //je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EBP);
     //je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_ESP);
+#else
+#error compiler-specific implementation required
+#endif
     je_jit_x86_emit_ret(context);
 }
  
@@ -3855,6 +3893,10 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
         je_jit_x86_free_reg(context, reg1);
     }
 
+    // This block is compiler specific as they all use slightly different conventions
+    // on x64 for passing arguments :cry:
+
+#ifdef JE_COMPILER_MSVC
     // Store registers we are going to use.
     je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_ECX);
     je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EDX);
@@ -3879,6 +3921,9 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     // Restore registers we used.
     je_jit_x86_emit_pop_r32(context, JE_JIT_X86_REG_ECX);
     je_jit_x86_emit_pop_r32(context, JE_JIT_X86_REG_EDX);
+#else
+#error compiler-specific implementation required
+#endif
 
     // Move result into return register.
     int ret_reg = 0;
@@ -3907,7 +3952,7 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
             int addr_reg = je_jit_x86_alloc_alu_reg(context);
             uint64_t address = (uint64_t)&context->function_result.float_value;
             je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
-            je_jit_x86_emit_movss_xmm32_r32(context, addr_reg, ret_reg);
+            je_jit_x86_emit_movss_xmm32_r32(context, ret_reg, addr_reg);
             je_jit_x86_free_reg(context, addr_reg);
             break;
         }
@@ -4363,7 +4408,7 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
     return 0;
 }
 
-#endif // _M_X64
+#endif // JE_ISA_ARM64
 #endif // JE_JIT_AVAILABLE
 
 #endif

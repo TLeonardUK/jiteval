@@ -31,8 +31,8 @@
 // Utility functions
 // -----------------------------------------------------------------------
 
-#ifdef _WIN32
-#include <windows.h>
+#ifdef JE_PLATFORM_WINDOWS
+
 typedef struct timer_t {
     LARGE_INTEGER time_start;
     LARGE_INTEGER time_stop;
@@ -51,7 +51,9 @@ double timer_elapsed_ms(timer_t* timer) {
     duration = (double)(timer->time_stop.QuadPart - timer->time_start.QuadPart) / (double)freq.QuadPart;
     return duration * 1000.0f;
 }
+
 #else
+
 void timer_start(timer_t* timer) {
 }
 void timer_stop(timer_t* timer) {
@@ -59,16 +61,19 @@ void timer_stop(timer_t* timer) {
 double timer_elapsed_ms(timer_t* timer) {
     return 0.0f;
 }
+
 #endif
 
 // -----------------------------------------------------------------------
 // Bound variables and functions
 // -----------------------------------------------------------------------
 
-void func_sin(je_context_t* ctx) {
+const char* g_benchmark_expression = "sqr((((12 * var_float) / (32 * 2)) + 3) + 8)";
+
+void func_sqr(je_context_t* ctx) {
     float a;
     je_get_parameter_float(ctx, 0, &a);
-    je_return_float(ctx, (float)sin(a));
+    je_return_float(ctx, a * a);
 }
 
 // -----------------------------------------------------------------------
@@ -78,11 +83,11 @@ void func_sin(je_context_t* ctx) {
 void setup_context(je_context_t* ctx, int flags) {
     je_new_context(ctx, flags);
 
-    je_bind_function(ctx, "sin", false, &func_sin, JE_TYPE_FLOAT, JE_TYPE_FLOAT, NULL);
-    je_bind_variable_int(ctx, "var_int", false, 123);
-    je_bind_variable_bool(ctx, "var_bool", false, false);
-    je_bind_variable_string(ctx, "var_string", false, "abc");
-    je_bind_variable_float(ctx, "var_float", false, 123.0f);
+    je_bind_function        (ctx, "sqr",        false, &func_sqr, JE_TYPE_FLOAT, JE_TYPE_FLOAT, NULL);
+    je_bind_variable_int    (ctx, "var_int",    false, 123);
+    je_bind_variable_bool   (ctx, "var_bool",   false, false);
+    je_bind_variable_string (ctx, "var_string", false, "abc");
+    je_bind_variable_float  (ctx, "var_float",  false, 123.0f);
 }
 
 void run_benchmark(const char* name, int flags) {
@@ -94,7 +99,7 @@ void run_benchmark(const char* name, int flags) {
     {
         timer_t timer;
         timer_start(&timer);
-        je_compile(&ctx, "((((12 * var_float) / (32 * 2)) + 3) + 8)");
+        je_compile(&ctx, g_benchmark_expression);
         timer_stop(&timer);
         printf("Compile took: %.8f ms\n", timer_elapsed_ms(&timer));
     }

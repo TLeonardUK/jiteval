@@ -5,6 +5,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="sample.c" />
-    <ClCompile Include="test.c" />
+    <ClCompile Include="benchmark.c" />
   </ItemGroup>
 </Project>
