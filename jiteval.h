@@ -14,6 +14,20 @@
 //
 // DOCUMENTATION
 // 
+//      <type> je_eval_<type>(const char* expression, const char* error_msg = 0, int error_msg_len = 0);
+//          
+//          Shorthand that can be used standalone to interpret an expression without 
+//          setting up a context.
+// 
+//          Useful for throw-away expressions, but less optimal for expressions that
+//          are going to be re-used as the expression needs to be compiled for each call.
+//
+//          If a buffer is passed to error_msg it will be filled if an error occurs.
+// 
+//          Return value is the result of the expression coerced to the given type.
+// 
+//          For je_eval_string the result must be free'd by the caller.
+// 
 //      int je_new_context(je_context_t* context, int flags);
 // 
 //          Takes an opaque context object that is used by all other functions
@@ -280,6 +294,11 @@ extern "C" {
 typedef struct je_context_t je_context_t;
 typedef void (*je_func_t)(je_context_t* context);
 typedef void (__cdecl*je_jit_func_t)();
+
+int je_eval_int(const char* expression, char* error_msg, int error_msg_len);
+float je_eval_float(const char* expression, char* error_msg, int error_msg_len);
+bool je_eval_bool(const char* expression, char* error_msg, int error_msg_len);
+const char* je_eval_string(const char* expression, char* error_msg, int error_msg_len);
 
 int je_new_context(je_context_t* context, int flags);
 int je_free_context(je_context_t* context);
@@ -1149,6 +1168,183 @@ void je_intrinsic_string_not_equal(je_context_t* ctx) {
     je_get_parameter_string(ctx, 0, &a);
     je_get_parameter_string(ctx, 1, &b);
     je_return_bool(ctx, strcmp(a, b) != 0);
+}
+
+
+int je_eval_int(const char* expression, char* error_msg, int error_msg_len) {
+    je_context_t ctx;
+    int ret = je_new_context(&ctx, JE_FLAG_NONE);
+    if (ret < 0) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return 0;
+    }
+
+    ret = je_compile(&ctx, expression);
+    if (ret < 0) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return 0;
+    }
+
+    ret = je_eval(&ctx);
+    if (ret < 0) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return 0;
+    }
+
+    int result = 0;
+    ret = je_result_int(&ctx, &result);
+    if (ret < 0) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return 0;
+    }
+
+    je_free_context(&ctx);
+    return result;
+}
+
+float je_eval_float(const char* expression, char* error_msg, int error_msg_len) {
+    je_context_t ctx;
+    int ret = je_new_context(&ctx, JE_FLAG_NONE);
+    if (ret < 0) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return 0.0f;
+    }
+
+    ret = je_compile(&ctx, expression);
+    if (ret < 0) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return 0.0f;
+    }
+
+    ret = je_eval(&ctx);
+    if (ret < 0) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return 0.0f;
+    }
+
+    float result = 0.0f;
+    ret = je_result_float(&ctx, &result);
+    if (ret < 0) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return 0.0f;
+    }
+
+    je_free_context(&ctx);
+    return result;
+}
+
+bool je_eval_bool(const char* expression, char* error_msg, int error_msg_len) {
+    je_context_t ctx;
+    int ret = je_new_context(&ctx, JE_FLAG_NONE);
+    if (ret < 0) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return 0;
+    }
+
+    ret = je_compile(&ctx, expression);
+    if (ret < 0) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return 0;
+    }
+
+    ret = je_eval(&ctx);
+    if (ret < 0) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return 0;
+    }
+
+    int result = 0;
+    ret = je_result_bool(&ctx, &result);
+    if (ret < 0) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return 0;
+    }
+
+    je_free_context(&ctx);
+    return result;
+}
+
+const char* je_eval_string(const char* expression, char* error_msg, int error_msg_len) {
+    je_context_t ctx;
+    int ret = je_new_context(&ctx, JE_FLAG_NONE);
+    if (ret < 0) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return NULL;
+    }
+
+    ret = je_compile(&ctx, expression);
+    if (ret < 0) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return NULL;
+    }
+
+    ret = je_eval(&ctx);
+    if (ret < 0) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return NULL;
+    }
+
+    const char* result = NULL;
+    ret = je_result_string(&ctx, &result);
+    if (ret < 0 || result == NULL) {
+        if (error_msg != NULL) {
+            strncpy(error_msg, je_error_msg(&ctx), error_msg_len);
+        }
+        je_free_context(&ctx);
+        return NULL;
+    }
+
+    size_t result_len = strlen(result);
+    char* buffer = malloc(result_len + 1);
+    strncpy(buffer, result, result_len + 1);
+
+    je_free_context(&ctx);
+    return buffer;
 }
 
 int je_new_context(je_context_t* context, int flags) {

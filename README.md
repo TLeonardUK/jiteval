@@ -9,6 +9,17 @@ JitEval is a single-header library written in C, that provides support for evalu
 
 It was originally designed for real-time, performance critical, applications such as video games.
 
+# Features
+- C11 with no dependencies.
+- Single header files.
+- Simple to use, while being very fast.
+- JIT compiling for supported ISA's for maximum performance.
+- Implements standard C operators and precedence.
+- Custom variable and function support.
+- No runtime malloc usage.
+- Thread safe (using separate contexts per thread).
+- MIT Licensed.
+
 # What type of expressions are supported?
 The library supports all standard C operators, along with function calls and variables. It uses strongly-typed, cast-sensitive semantics (again like C).
 
@@ -40,6 +51,14 @@ You simple need to drop the header file in your project include it a source file
 ```
 
 You can then use it anywhere in your codebase just by including the header file.
+
+The simplest (but least efficient) way of evaluating an expression is using the je_eval_<type> functions, like so:
+
+```c
+int result = je_eval_int("(4 + 4) / 2", NULL, 0);
+```
+
+A more full-featured example is contained in sample.c
 
 Extensive documentation of the API's available to you are located in the comments at the top of the jiteval.h
 
