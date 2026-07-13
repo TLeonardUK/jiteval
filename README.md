@@ -75,11 +75,6 @@ The latest released version of the header file is available on the github releas
 | Windows | Clang | x64 | :heavy_check_mark: | :heavy_check_mark: |
 | All Others | - | - | :heavy_check_mark: | :x: |
 
-# What currently works?
-The library is written in ISO C11 and will compile and run on most platforms. 
-
-JIT compiling is currently only available for x86/x64 under msvc/clang on windows, but will be expanded to other compilers and ISA's over time.
-
 # Whats in the repository?
 ```
 /
