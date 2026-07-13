@@ -21,7 +21,7 @@ It was originally designed for real-time, performance critical, applications suc
 - MIT Licensed.
 
 # What type of expressions are supported?
-The library supports all standard C operators, along with function calls and variables. It uses strongly-typed, cast-sensitive semantics (again like C).
+The library supports all standard C operators, along with function calls and variables. It uses strongly-typed, case-sensitive semantics (again like C).
 
 Support data types are: int, float, string, bool.
 
