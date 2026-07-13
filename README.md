@@ -65,6 +65,16 @@ Extensive documentation of the API's available to you are located in the comment
 # Where can I download it?
 The latest released version of the header file is available on the github releases page - https://github.com/TLeonardUK/jiteval/releases
 
+# Whats the platform support?
+
+| Platform | Compiler | ISA | Non-JIT Support |JIT Support |
+| --- | --- | --- | --- | --- |
+| Windows | MSVC | x86 | :heavy_check_mark: | :heavy_check_mark: |
+| Windows | Clang | x86 | :heavy_check_mark: | :heavy_check_mark: |
+| Windows | MSVC | x64 | :heavy_check_mark: | :heavy_check_mark: |
+| Windows | Clang | x64 | :heavy_check_mark: | :heavy_check_mark: |
+| All Others | - | - | :heavy_check_mark: | :x: |
+
 # What currently works?
 The library is written in ISO C11 and will compile and run on most platforms. 
 
