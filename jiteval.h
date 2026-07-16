@@ -175,7 +175,7 @@
 // LICENSE
 //
 //      Permission is hereby granted, free of charge, to any person obtaining a 
-//      copy of this software and associated documentation files(the “Software”), 
+//      copy of this software and associated documentation files(the ï¿½Softwareï¿½), 
 //      to deal in the Software without restriction, including without limitation 
 //      the rights to use, copy, modify, merge, publish, distribute, sublicense, 
 //      and /or sell copies of the Software, and to permit persons to whom the 
@@ -184,7 +184,7 @@
 //      The above copyright notice and this permission notice shall be included 
 //      in all copies or substantial portions of the Software.
 // 
-//      THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS 
+//      THE SOFTWARE IS PROVIDED ï¿½AS ISï¿½, WITHOUT WARRANTY OF ANY KIND, EXPRESS 
 //      OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF 
 //      MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
 //      IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY 
@@ -293,7 +293,7 @@ extern "C" {
 
 typedef struct je_context_t je_context_t;
 typedef void (*je_func_t)(je_context_t* context);
-typedef void (__cdecl*je_jit_func_t)();
+typedef void (*je_jit_func_t)();
 
 int je_eval_int(const char* expression, char* error_msg, int error_msg_len);
 float je_eval_float(const char* expression, char* error_msg, int error_msg_len);
@@ -331,22 +331,30 @@ const char* je_error_msg(je_context_t* context);
 #ifdef JITEVAL_IMPL
 
 // Platform determination
-#ifdef _WIN32
+#if defined(_WIN32)
 #define JE_PLATFORM_WINDOWS
+#elif defined(__linux__)
+#define JE_PLATFORM_LINUX
+#elif defined(__APPLE__)
+#define JE_PLATFORM_MACOS
 #endif
 
 // Compiler determination
-#ifdef _MSC_VER
+#if defined(_MSC_VER)
 // Also captures using clang under msvc.
 #define JE_COMPILER_MSVC
+#elif defined(__GNUC__)
+#define JE_COMPILER_GCC
+#elif defined(__clang__)
+#define JE_COMPILER_CLANG
 #else
 #error Unknown platform
 #endif
 
 // ISA determination.
-#if defined(_M_X64) 
+#if defined(_M_X64) || defined(__x86_64__)
 #define JE_ISA_X64
-#elif defined(_M_IX86)
+#elif defined(_M_IX86) || defined(__i386__)
 #define JE_ISA_X86
 #endif
 

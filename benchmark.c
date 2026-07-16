@@ -26,6 +26,7 @@
 #include "jiteval.h"
 
 #include <math.h>
+#include <time.h>
 
 // -----------------------------------------------------------------------
 // Utility functions
@@ -33,18 +34,18 @@
 
 #ifdef JE_PLATFORM_WINDOWS
 
-typedef struct timer_t {
+typedef struct perf_timer_t {
     LARGE_INTEGER time_start;
     LARGE_INTEGER time_stop;
-} timer_t;
+} perf_timer_t;
 
-void timer_start(timer_t* timer) {
+void perf_timer_start(perf_timer_t* timer) {
     QueryPerformanceCounter(&timer->time_start);
 }
-void timer_stop(timer_t* timer) {
+void perf_timer_stop(perf_timer_t* timer) {
     QueryPerformanceCounter(&timer->time_stop);
 }
-double timer_elapsed_ms(timer_t* timer) {
+double perf_timer_elapsed_ms(perf_timer_t* timer) {
     LARGE_INTEGER freq;
     double duration;
     QueryPerformanceFrequency(&freq);
@@ -54,12 +55,20 @@ double timer_elapsed_ms(timer_t* timer) {
 
 #else
 
-void timer_start(timer_t* timer) {
+typedef struct perf_timer_t {
+    struct timespec end_time;
+    struct timespec start_time;
+} perf_timer_t;
+
+void perf_timer_start(perf_timer_t* timer) {
+    clock_gettime(CLOCK_MONOTONIC, &timer->start_time);
 }
-void timer_stop(timer_t* timer) {
+void perf_timer_stop(perf_timer_t* timer) {
+    clock_gettime(CLOCK_MONOTONIC, &timer->end_time);
 }
-double timer_elapsed_ms(timer_t* timer) {
-    return 0.0f;
+double perf_timer_elapsed_ms(perf_timer_t* timer) {
+    long elapsed_ns = (timer->end_time.tv_sec - timer->start_time.tv_sec) * (long)1e9 + (timer->end_time.tv_nsec - timer->start_time.tv_nsec);
+    return elapsed_ns / 1e6f;
 }
 
 #endif
@@ -97,25 +106,25 @@ void run_benchmark(const char* name, int flags) {
     printf("============== %s ==============\n", name);
 
     {
-        timer_t timer;
-        timer_start(&timer);
+        perf_timer_t timer;
+        perf_timer_start(&timer);
         je_compile(&ctx, g_benchmark_expression);
-        timer_stop(&timer);
-        printf("Compile took: %.8f ms\n", timer_elapsed_ms(&timer));
+        perf_timer_stop(&timer);
+        printf("Compile took: %.8f ms\n", perf_timer_elapsed_ms(&timer));
     }
 
     {
         const int k_iterations = 1000000;
 
         float output_value = 0.0f;
-        timer_t timer;
-        timer_start(&timer);
+        perf_timer_t timer;
+        perf_timer_start(&timer);
         for (int i = 0; i < k_iterations; i++) {
             je_eval(&ctx);
             je_result_float(&ctx, &output_value);
         }
-        timer_stop(&timer);
-        double elapsed = timer_elapsed_ms(&timer);
+        perf_timer_stop(&timer);
+        double elapsed = perf_timer_elapsed_ms(&timer);
         printf("Eval took %.8f ms (%.8f ms per iterations), result was %.8f\n", elapsed, elapsed / k_iterations, output_value);
     }
 
