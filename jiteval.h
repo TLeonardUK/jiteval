@@ -332,39 +332,72 @@ const char* je_error_msg(je_context_t* context);
 
 // Platform determination
 #if defined(_WIN32)
-#define JE_PLATFORM_WINDOWS
+    #define JE_PLATFORM_WINDOWS
+    #define JE_PLATFORM_NAME "Windows"
 #elif defined(__linux__)
-#define JE_PLATFORM_LINUX
+    #define JE_PLATFORM_LINUX
+    #define JE_PLATFORM_NAME "Linux"
 #elif defined(__APPLE__)
-#define JE_PLATFORM_MACOS
+    #define JE_PLATFORM_MACOS
+    #define JE_PLATFORM_NAME "MacOS"
 #endif
 
 // Compiler determination
 #if defined(_MSC_VER)
-// Also captures using clang under msvc.
-#define JE_COMPILER_MSVC
-#elif defined(__GNUC__)
-#define JE_COMPILER_GCC
+    // Also captures using clang under msvc.
+    #define JE_COMPILER_MSVC
+    #define JE_COMPILER_NAME "MSVC"
 #elif defined(__clang__)
-#define JE_COMPILER_CLANG
+    #define JE_COMPILER_CLANG
+    #define JE_COMPILER_NAME "CLANG"
+#elif defined(__GNUC__)
+    #define JE_COMPILER_GCC
+    #define JE_COMPILER_NAME "GCC"
 #else
-#error Unknown platform
+    #error Unknown platform
 #endif
 
 // ISA determination.
 #if defined(_M_X64) || defined(__x86_64__)
-#define JE_ISA_X64
+    #define JE_ISA_X64
+    #define JE_ISA_NAME "X64"
 #elif defined(_M_IX86) || defined(__i386__)
-#define JE_ISA_X86
+    #define JE_ISA_X86
+    #define JE_ISA_NAME "X86"
+#endif
+
+// Only support JIT for x86/x64 under msvc/gcc/clang for the moment.
+#if defined(JE_PLATFORM_WINDOWS) || defined(JE_PLATFORM_LINUX)
+    #if (defined(JE_COMPILER_MSVC) || defined(JE_COMPILER_GCC) || defined(JE_COMPILER_CLANG)) && (defined(JE_ISA_X64) || defined(JE_ISA_X86))
+        #define JE_JIT_AVAILABLE
+    #endif
+#endif
+
+#ifdef JE_JIT_AVAILABLE
+    #ifdef JE_COMPILER_MSVC
+        #ifdef JE_ISA_X64
+            #define JE_CALLING_CONVENTION_MSVC
+        #else
+            #define JE_CALLING_CONVENTION_C
+        #endif
+    #elif defined(JE_COMPILER_GCC) || defined(JE_COMPILER_CLANG)
+        #ifdef JE_ISA_X64
+            #define JE_CALLING_CONVENTION_SYSTEMV
+        #else
+            #define JE_CALLING_CONVENTION_C
+        #endif
+    #else
+        #error Unknown calling convention
+    #endif
 #endif
 
 #ifdef JE_COMPILER_MSVC
-#define _CRT_SECURE_NO_WARNINGS
-#define _CRT_NONSTDC_NO_DEPRECATE
+    #define _CRT_SECURE_NO_WARNINGS
+    #define _CRT_NONSTDC_NO_DEPRECATE
 #endif
 
 #ifdef JE_PLATFORM_WINDOWS
-#include <Windows.h>
+    #include <Windows.h>
 #endif
 
 #include <memory.h>
@@ -377,9 +410,8 @@ const char* je_error_msg(je_context_t* context);
 #include <assert.h>
 #include <stdint.h>
 
-// Only support JIT for msvc/x64 for the moment.
-#if defined(JE_COMPILER_MSVC) && (defined(JE_ISA_X64) || defined(JE_ISA_X86))
-#define JE_JIT_AVAILABLE
+#if defined(JE_PLATFORM_LINUX)
+#include <sys/mman.h>
 #endif
 
 // -----------------------------------------------------------------------
@@ -616,41 +648,10 @@ typedef struct je_context_t {
 #endif
 
 // -----------------------------------------------------------------------
-// PLATFORM SPECIFIC CODE
-// -----------------------------------------------------------------------
-
-#ifdef JE_JIT_AVAILABLE
-#ifdef JE_PLATFORM_WINDOWS
-int je_alloc_executable(je_context_t* context, const char* code, int code_size, char** output) {
-    SYSTEM_INFO system_info;
-    GetSystemInfo(&system_info);
-
-    int pageSize = system_info.dwPageSize;
-    int memorySize = ((code_size + (pageSize - 1)) / pageSize) * pageSize;
-    DWORD dummy;
-
-    *output = (char*)VirtualAlloc(NULL, memorySize, MEM_COMMIT, PAGE_READWRITE);
-    memcpy(*output, code, code_size);
-    VirtualProtect(*output, memorySize, PAGE_EXECUTE_READ, &dummy); 
-
-    return *output != NULL ? JE_RESULT_SUCCESS : JE_RESULT_FAILED;
-}
-
-int je_free_executable(je_context_t* context, void* memory) {
-    if (!VirtualFree(memory, 0, MEM_RELEASE)) {
-        return JE_RESULT_FAILED;
-    }
-    return JE_RESULT_SUCCESS;
-}
-#else
-#error Implementation required
-#endif
-#endif // JE_JIT_AVAILABLE
-
-// -----------------------------------------------------------------------
 // UTILITY FUNCTIONS
 // -----------------------------------------------------------------------
 
+void je_jit_free(je_context_t* context);
 int je_parse(je_context_t* context, je_ast_node_t** node, int precedence);
 int je_eval_slow(je_context_t* context, je_ast_node_t* node, je_value_t* result);
 
@@ -1359,6 +1360,15 @@ const char* je_eval_string(const char* expression, char* error_msg, int error_ms
 }
 
 int je_new_context(je_context_t* context, int flags) {
+    if (flags & JE_FLAG_DEBUG_LOGGING) {
+#ifdef JE_JIT_AVAILABLE
+        const char* jit_available_str = "Yes";
+#else
+        const char* jit_available_str = "No";
+#endif
+        printf("JitEval: ISA=%s Platform=%s Compiler=%s JitAvailable=%s\n", JE_ISA_NAME, JE_PLATFORM_NAME, JE_COMPILER_NAME, jit_available_str);
+    }
+
     memset(context, 0, sizeof(struct je_context_t));
     context->flags = flags;
     context->mem_arena = malloc(JE_MEM_ARENA_SIZE);
@@ -1389,6 +1399,11 @@ int je_free_context(je_context_t* context) {
         free(context->mem_arena);
         context->mem_arena = NULL;
     }
+#ifdef JE_JIT_AVAILABLE
+    if (context->jit_compiled) {
+        je_jit_free(context);
+    }
+#endif
     return JE_RESULT_SUCCESS;
 }
 
@@ -3296,6 +3311,59 @@ int je_compile(je_context_t* context, const char* source) {
 }
 
 #ifdef JE_JIT_AVAILABLE
+
+// -----------------------------------------------------------------------
+// PLATFORM SPECIFIC CODE
+// -----------------------------------------------------------------------
+
+#ifdef JE_JIT_AVAILABLE
+#ifdef JE_PLATFORM_WINDOWS
+int je_alloc_executable(je_context_t* context, const char* code, int code_size, char** output) {
+    SYSTEM_INFO system_info;
+    GetSystemInfo(&system_info);
+
+    int pageSize = system_info.dwPageSize;
+    int memorySize = ((code_size + (pageSize - 1)) / pageSize) * pageSize;
+    DWORD dummy;
+
+    *output = (char*)VirtualAlloc(NULL, memorySize, MEM_COMMIT, PAGE_READWRITE);
+    memcpy(*output, code, code_size);
+    VirtualProtect(*output, memorySize, PAGE_EXECUTE_READ, &dummy);
+
+    return *output != NULL ? JE_RESULT_SUCCESS : JE_RESULT_FAILED;
+}
+
+int je_free_executable(je_context_t* context, void* memory, int code_size) {
+    if (!VirtualFree(memory, 0, MEM_RELEASE)) {
+        return JE_RESULT_FAILED;
+    }
+    return JE_RESULT_SUCCESS;
+}
+#elif defined(JE_PLATFORM_LINUX)
+int je_alloc_executable(je_context_t* context, const char* code, int code_size, char** output) {
+    *output = mmap(0, code_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (*output == (char*)-1) {
+        return JE_RESULT_FAILED;
+    }
+    memcpy(*output, code, code_size);
+    if (mprotect(*output, code_size, PROT_READ | PROT_EXEC) == -1) {
+        return JE_RESULT_FAILED;
+    }
+    return JE_RESULT_SUCCESS;
+}
+int je_free_executable(je_context_t* context, void* memory, int code_size) {
+    if (munmap(memory, code_size) != 0) {
+        return JE_RESULT_FAILED;
+    }
+    return JE_RESULT_SUCCESS;
+}
+#endif
+#endif // JE_JIT_AVAILABLE
+
+// -----------------------------------------------------------------------
+// X86 / X64 JIT
+// -----------------------------------------------------------------------
+
 #if defined(JE_ISA_X64) || defined(JE_ISA_X86)
 
 #define JE_JIT_X86_REG_EAX                                      (0)
@@ -3380,6 +3448,10 @@ int je_compile_jit(je_context_t* context) {
     context->jit_code_bytes = jit_length;
     context->jit_compiled = true;
     return JE_RESULT_SUCCESS;
+}
+
+void je_jit_free(je_context_t* context) {
+    je_free_executable(context, context->jit_executable_memory, context->jit_code_bytes);
 }
 
 void je_jit_x86_emit_bytes_1(je_context_t* context, uint8_t byte1) {
@@ -3993,16 +4065,17 @@ bool je_jit_x86_reg_allocated(je_context_t* context, int reg) {
 }
 
 void je_jit_x86_emit_prologue(je_context_t* context) {
-#ifdef JE_COMPILER_MSVC
-#ifdef JE_ISA_X64
+#if defined(JE_CALLING_CONVENTION_MSVC)
+    // In theory we are meant to store volatile registers here, but with the way
+    // we do JIT, I don't think we have an occassion where thats actually needed.
+#elif defined(JE_CALLING_CONVENTION_C)
+    je_jit_x86_emit_push_r32(context, JE_JIT_X86_REG_EBP);
+    je_jit_x86_emit_mov_r32_r32(context, JE_JIT_X86_REG_EBP, JE_JIT_X86_REG_ESP);
+#elif defined(JE_CALLING_CONVENTION_SYSTEMV)
     // In theory we are meant to store volatile registers here, but with the way
     // we do JIT, I don't think we have an occassion where thats actually needed.
 #else
-    je_jit_x86_emit_push_r32(context, JE_JIT_X86_REG_EBP);
-    je_jit_x86_emit_mov_r32_r32(context, JE_JIT_X86_REG_EBP, JE_JIT_X86_REG_ESP);
-#endif
-#else
-#error compiler-specific implementation required
+    #error compiler-specific implementation required
 #endif
 }
 
@@ -4060,15 +4133,16 @@ void je_jit_x86_emit_epilogue(je_context_t* context, int return_reg) {
         }
     }
 
-#ifdef JE_COMPILER_MSVC
-#ifdef JE_ISA_X64
+#if defined(JE_CALLING_CONVENTION_MSVC)
+    // Restore volatile registers (if we ever use them...)
+#elif defined(JE_CALLING_CONVENTION_C)
+    je_jit_x86_emit_pop_r32(context, JE_JIT_X86_REG_EBP);
+#elif defined(JE_CALLING_CONVENTION_SYSTEMV)
     // Restore volatile registers (if we ever use them...)
 #else
-    je_jit_x86_emit_pop_r32(context, JE_JIT_X86_REG_EBP);
+    #error compiler-specific implementation required
 #endif
-#else
-#error compiler-specific implementation required
-#endif
+
     je_jit_x86_emit_ret(context);
 }
  
@@ -4127,7 +4201,7 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
                 je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
                 je_jit_x86_emit_mov_r64_addr_r64_direct(context, addr_reg, reg1);
 #else
-                uint32_t address = (uint64_t)&context->function_params[i].string_value;
+                uint32_t address = (uint32_t)&context->function_params[i].string_value;
                 je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
                 je_jit_x86_emit_mov_r32_addr_r32_direct(context, addr_reg, reg1);
 #endif
@@ -4141,9 +4215,7 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
 
     // This block is compiler specific as they all use slightly different conventions
     // on x64 for passing arguments :cry:
-
-#ifdef JE_COMPILER_MSVC
-#ifdef JE_ISA_X64
+#if defined(JE_CALLING_CONVENTION_MSVC)
     // Store registers we are going to use.
     je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_ECX);
     je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EDX);
@@ -4166,7 +4238,7 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     // Restore registers we used.
     je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_ECX);
     je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EDX);
-#else
+#elif defined(JE_CALLING_CONVENTION_C)
     // Store registers we are going to use.
     je_jit_x86_emit_push_r32(context, JE_JIT_X86_REG_ECX);
     je_jit_x86_emit_push_r32(context, JE_JIT_X86_REG_EDX);
@@ -4193,9 +4265,31 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     // Restore registers we used.
     je_jit_x86_emit_pop_r32(context, JE_JIT_X86_REG_ECX);
     je_jit_x86_emit_pop_r32(context, JE_JIT_X86_REG_EDX);
-#endif
+#elif defined(JE_CALLING_CONVENTION_SYSTEMV)
+    // Store registers we are going to use.
+    je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_ECX);
+    je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EDX);
+
+    // Store the active_function pointer
+    uint64_t address = (uint64_t)&context->active_function;
+    je_jit_x86_emit_mov_r64_imm64(context, JE_JIT_X86_REG_ECX, address);
+    je_jit_x86_emit_mov_r64_imm64(context, JE_JIT_X86_REG_EDX, (uint64_t)node->function);
+    je_jit_x86_emit_mov_r64_addr_r64_direct(context, JE_JIT_X86_REG_ECX, JE_JIT_X86_REG_EDX);
+
+    // Push the context agument (first integer argumnet goes to RDI under SystemV).
+    address = (uint64_t)context;
+    je_jit_x86_emit_mov_r64_imm64(context, JE_JIT_X86_REG_EDI, address);
+    // Call function
+    address = (uint64_t)node->function->function;
+    je_jit_x86_emit_mov_r64_imm64(context, JE_JIT_X86_REG_EDX, address);
+    je_jit_x86_emit_call(context, JE_JIT_X86_REG_EDX);
+    je_jit_x86_emit_nop(context);
+
+    // Restore registers we used.
+    je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_ECX);
+    je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EDX);
 #else
-#error compiler-specific implementation required
+    #error compiler-specific implementation required
 #endif
 
     // Move result into return register.
@@ -4255,7 +4349,7 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
             je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
             je_jit_x86_emit_mov_r64_direct_r64_addr(context, ret_reg, addr_reg);
 #else
-            uint32_t address = (uint64_t)&context->function_result.string_value;
+            uint32_t address = (uint32_t)&context->function_result.string_value;
             je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
             je_jit_x86_emit_mov_r32_direct_r32_addr(context, ret_reg, addr_reg);
 #endif
