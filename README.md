@@ -73,10 +73,8 @@ The latest released version of the header file is available on the github releas
 | Windows | Clang | x86 | :heavy_check_mark: | :heavy_check_mark: |
 | Windows | MSVC | x64 | :heavy_check_mark: | :heavy_check_mark: |
 | Windows | Clang | x64 | :heavy_check_mark: | :heavy_check_mark: |
-| Linux | MSVC | x86 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | Clang | x86 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | GCC | x86 | :heavy_check_mark: | :heavy_check_mark: |
-| Linux | MSVC | x64 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | Clang | x64 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | GCC | x64 | :heavy_check_mark: | :heavy_check_mark: |
 | All Others | - | - | :heavy_check_mark: | :x: |
