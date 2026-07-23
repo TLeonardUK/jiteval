@@ -99,11 +99,13 @@ void setup_context(je_context_t* ctx, int flags) {
     je_bind_variable_float  (ctx, "var_float",  false, 123.0f);
 }
 
-void run_benchmark(const char* name, int flags) {
-    je_context_t ctx;
-    setup_context(&ctx, flags);
+double run_benchmark(const char* name, int flags) {
+    double elapsed = 0.0f;
 
     printf("============== %s ==============\n", name);
+
+    je_context_t ctx;
+    setup_context(&ctx, flags);
 
     {
         perf_timer_t timer;
@@ -114,26 +116,39 @@ void run_benchmark(const char* name, int flags) {
     }
 
     {
-        const int k_iterations = 1000000;
+        const int k_iterations = 1'000'000'000;
 
         float output_value = 0.0f;
         perf_timer_t timer;
         perf_timer_start(&timer);
         for (int i = 0; i < k_iterations; i++) {
             je_eval(&ctx);
-            je_result_float(&ctx, &output_value);
+            if (i == k_iterations - 1) {
+                je_result_float(&ctx, &output_value);
+            }
         }
         perf_timer_stop(&timer);
-        double elapsed = perf_timer_elapsed_ms(&timer);
+        elapsed = perf_timer_elapsed_ms(&timer);
         printf("Eval took %.8f ms (%.8f ms per iterations), result was %.8f\n", elapsed, elapsed / k_iterations, output_value);
+
+        int permanent_mem_used = 0;
+        int transient_mem_used = 0;
+        int executable_mem_used = 0;
+        je_memory_stats(&ctx, &permanent_mem_used, &transient_mem_used, &executable_mem_used);
+        printf("Post memory used: Permanent=%i bytes, Transient=%i bytes, Executable=%i bytes\n", permanent_mem_used, transient_mem_used, executable_mem_used);
     }
 
     je_free_context(&ctx);
+
+    return elapsed;
 }
 
 int main(int argc, char* argv[]) {
-    run_benchmark("Interpreted", JE_FLAG_NO_JIT);
-    run_benchmark("JIT Compiled", JE_FLAG_NONE);
+    double interpreted_time = run_benchmark("Interpreted", JE_FLAG_NO_JIT);
+    double jit_time = run_benchmark("JIT Compiled", JE_FLAG_NONE);
+
+    printf("\nJIT speed: %.2f x\n", (interpreted_time / jit_time));
+
     return 0;
 }
 
