@@ -148,9 +148,12 @@ double run_benchmark(const char* name, int flags) {
 
 int main(int argc, char* argv[]) {
     double interpreted_time = run_benchmark("Interpreted", JE_FLAG_NO_JIT);
+
+    printf("\n");
+
     double jit_time = run_benchmark("JIT Compiled", JE_FLAG_NONE);
 
-    printf("\nJIT speed: %.2f x\n", (interpreted_time / jit_time));
+    printf("\nJIT Speed Ratio: %.2f%%\n", (interpreted_time / jit_time) * 100.0f);
 
     return 0;
 }

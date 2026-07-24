@@ -231,8 +231,11 @@ extern "C" {
 // 
 // Maximum dynamic memory allocation of a context is double this, plus
 // any additional memory needed for JIT compiled memory pages.
+//
+// Maximum size of arena is UINT16_MAX as uint16_t's are used for offsets
+// within the arena.
 #ifndef JE_MEM_ARENA_SIZE
-#define JE_MEM_ARENA_SIZE               (8 * 1024)
+#define JE_MEM_ARENA_SIZE               (2 * 1024)
 #endif
 
 // Alignment of allocations from the memory arena. In general should not
@@ -299,6 +302,7 @@ extern "C" {
 #define JE_FLAG_NO_OPTIMIZATION                     (1)     // Disables any optimization passes on the expression.
 #define JE_FLAG_NO_JIT                              (2)     // Disables jit compiling of the expression 
 #define JE_FLAG_DEBUG_LOGGING                       (4)     // Prints out the AST at different stages of compilation, among other things, used for debugging.
+#define JE_FLAG_DEBUG_MEM_LOGGING                   (5)     // Prints out memory allocations / arena states.
 
 typedef struct je_context_t je_context_t;
 typedef void (*je_func_t)(je_context_t* context);
@@ -354,12 +358,12 @@ void je_memory_stats(je_context_t* context, int* permanent_mem_used, int* transi
 
 // Compiler determination
 #if defined(_MSC_VER)
-    // Also captures using clang under msvc.
+    // Also captures using clang as a frontend for msvc.
     #define JE_COMPILER_MSVC
     #define JE_COMPILER_NAME "MSVC"
 #elif defined(__clang__)
     #define JE_COMPILER_CLANG
-    #define JE_COMPILER_NAME "CLANG"
+    #define JE_COMPILER_NAME "Clang"
 #elif defined(__GNUC__)
     #define JE_COMPILER_GCC
     #define JE_COMPILER_NAME "GCC"
@@ -378,8 +382,10 @@ void je_memory_stats(je_context_t* context, int* permanent_mem_used, int* transi
 
 // Only support JIT for x86/x64 under msvc/gcc/clang for the moment.
 #if defined(JE_PLATFORM_WINDOWS) || defined(JE_PLATFORM_LINUX)
-    #if (defined(JE_COMPILER_MSVC) || defined(JE_COMPILER_GCC) || defined(JE_COMPILER_CLANG)) && (defined(JE_ISA_X64) || defined(JE_ISA_X86))
-        #define JE_JIT_AVAILABLE
+    #if defined(JE_COMPILER_MSVC) || defined(JE_COMPILER_GCC) || defined(JE_COMPILER_CLANG)
+        #if defined(JE_ISA_X64) || defined(JE_ISA_X86)
+            #define JE_JIT_AVAILABLE
+        #endif
     #endif
 #endif
 
@@ -428,137 +434,6 @@ void je_memory_stats(je_context_t* context, int* permanent_mem_used, int* transi
 // DEFINES
 // -----------------------------------------------------------------------
 
-#define JE_TOK_IDENTIFIER               (0)
-#define JE_TOK_FLOAT                    (1)
-#define JE_TOK_INT                      (2)
-#define JE_TOK_STRING                   (3)
-#define JE_TOK_BOOL                     (4)
-#define JE_TOK_OP_COMMA                 (5)
-#define JE_TOK_OP_MUL                   (6)
-#define JE_TOK_OP_DIV                   (7)
-#define JE_TOK_OP_SUB                   (8)
-#define JE_TOK_OP_ADD                   (9)
-#define JE_TOK_OP_MOD                   (10)
-#define JE_TOK_OP_LESS                  (11)
-#define JE_TOK_OP_GREATER               (12)
-#define JE_TOK_OP_LE                    (13)
-#define JE_TOK_OP_GE                    (14)
-#define JE_TOK_OP_EQUAL                 (15)
-#define JE_TOK_OP_NOT_EQUAL             (16)
-#define JE_TOK_OP_NOT                   (17)
-#define JE_TOK_OP_LOGICAL_AND           (18)
-#define JE_TOK_OP_LOGICAL_OR            (19)
-#define JE_TOK_OP_BITWISE_AND           (20)
-#define JE_TOK_OP_BITWISE_OR            (21)
-#define JE_TOK_OP_BITWISE_NOT           (22)
-#define JE_TOK_OP_BITWISE_XOR           (23)
-#define JE_TOK_OP_PARENTHESIS_OPEN      (24)
-#define JE_TOK_OP_PARENTHESIS_CLOSE     (25)
-#define JE_TOK_OP_KEYWORD_INT           (26)
-#define JE_TOK_OP_KEYWORD_FLOAT         (27)
-#define JE_TOK_OP_KEYWORD_STRING        (28)
-#define JE_TOK_OP_KEYWORD_BOOL          (29)
-
-// These are generic node types, that will be converted into type-specific ones
-// during semantic analysis.
-#define JE_NODE_LOGICAL_NOT             (1)
-#define JE_NODE_BITWISE_NOT             (2)
-#define JE_NODE_MUL                     (3)
-#define JE_NODE_DIV                     (4)
-#define JE_NODE_MOD                     (5)
-#define JE_NODE_SUB                     (6)
-#define JE_NODE_ADD                     (7)
-#define JE_NODE_LESS                    (8)
-#define JE_NODE_GREATER                 (9)
-#define JE_NODE_LE                      (10)
-#define JE_NODE_GE                      (11)
-#define JE_NODE_EQUAL                   (12)
-#define JE_NODE_NOT_EQUAL               (13)
-#define JE_NODE_BITWISE_AND             (14)
-#define JE_NODE_BITWISE_OR              (15)
-#define JE_NODE_LOGICAL_AND             (16)
-#define JE_NODE_LOGICAL_OR              (17)
-#define JE_NODE_VARIABLE                (18)
-#define JE_NODE_NEG                     (19)
-#define JE_NODE_POS                     (20)
-#define JE_NODE_CAST_TO_BOOL            (21) 
-#define JE_NODE_CAST_TO_INT             (22)
-#define JE_NODE_CAST_TO_FLOAT           (23)
-#define JE_NODE_CAST_TO_STRING          (24)
-#define JE_NODE_FUNCTION_CALL           (25)
-// These are the type-specific versions of the ndoes above.
-#define JE_NODE_LOGICAL_NOT_BOOL        (26)
-#define JE_NODE_BITWISE_NOT_INT         (27)
-#define JE_NODE_MUL_FLOAT               (28)
-#define JE_NODE_MUL_INT                 (29)
-#define JE_NODE_DIV_FLOAT               (30)
-#define JE_NODE_DIV_INT                 (31)
-#define JE_NODE_MOD_INT                 (32)
-#define JE_NODE_SUB_FLOAT               (33)
-#define JE_NODE_SUB_INT                 (34)
-#define JE_NODE_ADD_FLOAT               (35)
-#define JE_NODE_ADD_INT                 (36)
-#define JE_NODE_ADD_STRING              (37)
-#define JE_NODE_LESS_FLOAT              (38)
-#define JE_NODE_LESS_INT                (39)
-#define JE_NODE_GREATER_FLOAT           (40)
-#define JE_NODE_GREATER_INT             (41)
-#define JE_NODE_LE_FLOAT                (42)
-#define JE_NODE_LE_INT                  (43)
-#define JE_NODE_GE_FLOAT                (44)
-#define JE_NODE_GE_INT                  (45)
-#define JE_NODE_EQUAL_BOOL              (46)
-#define JE_NODE_EQUAL_INT               (47)
-#define JE_NODE_EQUAL_FLOAT             (48)
-#define JE_NODE_EQUAL_STRING            (49)
-#define JE_NODE_NOT_EQUAL_BOOL          (50)
-#define JE_NODE_NOT_EQUAL_INT           (51)
-#define JE_NODE_NOT_EQUAL_FLOAT         (52)
-#define JE_NODE_NOT_EQUAL_STRING        (53)
-#define JE_NODE_BITWISE_AND_INT         (54)
-#define JE_NODE_BITWISE_OR_INT          (55)
-#define JE_NODE_LOGICAL_AND_BOOL        (56)
-#define JE_NODE_LOGICAL_OR_BOOL         (57)
-#define JE_NODE_VARIABLE_BOOL           (58)
-#define JE_NODE_VARIABLE_INT            (59)
-#define JE_NODE_VARIABLE_FLOAT          (60)
-#define JE_NODE_VARIABLE_STRING         (61)
-#define JE_NODE_NEG_FLOAT               (62)
-#define JE_NODE_POS_FLOAT               (63)
-#define JE_NODE_NEG_INT                 (64)
-#define JE_NODE_POS_INT                 (65)
-#define JE_NODE_FLOAT_LITERAL           (66)
-#define JE_NODE_INT_LITERAL             (67)
-#define JE_NODE_STRING_LITERAL          (68)
-#define JE_NODE_BOOL_LITERAL            (69)
-#define JE_NODE_CAST_INT_TO_STRING      (70)
-#define JE_NODE_CAST_FLOAT_TO_STRING    (71)
-#define JE_NODE_CAST_BOOL_TO_STRING     (72)
-#define JE_NODE_CAST_STRING_TO_INT      (73)
-#define JE_NODE_CAST_FLOAT_TO_INT       (74)
-#define JE_NODE_CAST_BOOL_TO_INT        (75)
-#define JE_NODE_CAST_INT_TO_FLOAT       (76)
-#define JE_NODE_CAST_STRING_TO_FLOAT    (77)
-#define JE_NODE_CAST_BOOL_TO_FLOAT      (78)
-#define JE_NODE_CAST_INT_TO_BOOL        (79)
-#define JE_NODE_CAST_STRING_TO_BOOL     (80)
-#define JE_NODE_CAST_FLOAT_TO_BOOL      (81)
-#define JE_NODE_FUNCTION_CALL_INT       (82)
-#define JE_NODE_FUNCTION_CALL_FLOAT     (83)
-#define JE_NODE_FUNCTION_CALL_BOOL      (84)
-#define JE_NODE_FUNCTION_CALL_STRING    (85)
-
-#define JE_MEM_TAG_NAME                 (0)
-#define JE_MEM_TAG_VALUE                (1)
-#define JE_MEM_TAG_VARIABLE_DEF         (2)
-#define JE_MEM_TAG_FUNCTION_DEF         (3)
-#define JE_MEM_TAG_AST_NODE             (4)
-#define JE_MEM_TAG_STRING               (5)
-#define JE_MEM_TAG_NODE_CHILD_ARRAY     (6)
-#define JE_MEM_TAG_TYPE_DATA            (7)
-#define JE_MEM_TAG_PARAM_TYPES          (8)
-#define JE_MEM_TAG_COUNT                (9)
-
 #define JE_MAX_OPERATOR_PRECEDENCE      (9)
 
 // Maximum string length that can be manipulated by the expression.
@@ -566,11 +441,146 @@ void je_memory_stats(je_context_t* context, int* permanent_mem_used, int* transi
 #define JE_MAX_STRING_LENGTH            (2 ^ JE_MAX_STRING_BIT_LENGTH);
 #define JE_MAX_PARAMETERS               (8)
 
+enum je_token_type_t {
+    JE_TOK_IDENTIFIER,             
+    JE_TOK_FLOAT,
+    JE_TOK_INT,
+    JE_TOK_STRING,
+    JE_TOK_BOOL,
+    JE_TOK_OP_COMMA,
+    JE_TOK_OP_MUL,
+    JE_TOK_OP_DIV,
+    JE_TOK_OP_SUB,
+    JE_TOK_OP_ADD,
+    JE_TOK_OP_MOD,
+    JE_TOK_OP_LESS,
+    JE_TOK_OP_GREATER,
+    JE_TOK_OP_LE,
+    JE_TOK_OP_GE,
+    JE_TOK_OP_EQUAL,
+    JE_TOK_OP_NOT_EQUAL,
+    JE_TOK_OP_NOT,
+    JE_TOK_OP_LOGICAL_AND,
+    JE_TOK_OP_LOGICAL_OR,
+    JE_TOK_OP_BITWISE_AND,
+    JE_TOK_OP_BITWISE_OR,
+    JE_TOK_OP_BITWISE_NOT,
+    JE_TOK_OP_BITWISE_XOR,
+    JE_TOK_OP_PARENTHESIS_OPEN,
+    JE_TOK_OP_PARENTHESIS_CLOSE,
+    JE_TOK_OP_KEYWORD_INT,
+    JE_TOK_OP_KEYWORD_FLOAT,
+    JE_TOK_OP_KEYWORD_STRING,
+    JE_TOK_OP_KEYWORD_BOOL
+};
+
+enum je_node_type_t {
+    // These are generic node types, that will be converted into type-specific ones
+    // during semantic analysis.
+    JE_NODE_LOGICAL_NOT,
+    JE_NODE_BITWISE_NOT,
+    JE_NODE_MUL,
+    JE_NODE_DIV,
+    JE_NODE_MOD,
+    JE_NODE_SUB,
+    JE_NODE_ADD,
+    JE_NODE_LESS,
+    JE_NODE_GREATER,
+    JE_NODE_LE,
+    JE_NODE_GE,
+    JE_NODE_EQUAL,
+    JE_NODE_NOT_EQUAL,
+    JE_NODE_BITWISE_AND,
+    JE_NODE_BITWISE_OR,
+    JE_NODE_LOGICAL_AND,
+    JE_NODE_LOGICAL_OR,
+    JE_NODE_VARIABLE,
+    JE_NODE_NEG,
+    JE_NODE_POS,
+    JE_NODE_CAST_TO_BOOL,
+    JE_NODE_CAST_TO_INT,
+    JE_NODE_CAST_TO_FLOAT,
+    JE_NODE_CAST_TO_STRING,
+    JE_NODE_FUNCTION_CALL,
+    // These are the type-specific versions of the ndoes above.
+    JE_NODE_LOGICAL_NOT_BOOL,
+    JE_NODE_BITWISE_NOT_INT,
+    JE_NODE_MUL_FLOAT,
+    JE_NODE_MUL_INT,
+    JE_NODE_DIV_FLOAT,
+    JE_NODE_DIV_INT,
+    JE_NODE_MOD_INT,
+    JE_NODE_SUB_FLOAT,
+    JE_NODE_SUB_INT,
+    JE_NODE_ADD_FLOAT,
+    JE_NODE_ADD_INT,
+    JE_NODE_ADD_STRING,
+    JE_NODE_LESS_FLOAT,
+    JE_NODE_LESS_INT,
+    JE_NODE_GREATER_FLOAT,
+    JE_NODE_GREATER_INT,
+    JE_NODE_LE_FLOAT,
+    JE_NODE_LE_INT,
+    JE_NODE_GE_FLOAT,
+    JE_NODE_GE_INT,
+    JE_NODE_EQUAL_BOOL,
+    JE_NODE_EQUAL_INT,
+    JE_NODE_EQUAL_FLOAT,
+    JE_NODE_EQUAL_STRING,
+    JE_NODE_NOT_EQUAL_BOOL,
+    JE_NODE_NOT_EQUAL_INT,
+    JE_NODE_NOT_EQUAL_FLOAT,
+    JE_NODE_NOT_EQUAL_STRING,
+    JE_NODE_BITWISE_AND_INT,
+    JE_NODE_BITWISE_OR_INT,
+    JE_NODE_LOGICAL_AND_BOOL,
+    JE_NODE_LOGICAL_OR_BOOL,
+    JE_NODE_VARIABLE_BOOL,
+    JE_NODE_VARIABLE_INT,
+    JE_NODE_VARIABLE_FLOAT,
+    JE_NODE_VARIABLE_STRING,
+    JE_NODE_NEG_FLOAT,
+    JE_NODE_POS_FLOAT,
+    JE_NODE_NEG_INT,
+    JE_NODE_POS_INT,
+    JE_NODE_FLOAT_LITERAL,
+    JE_NODE_INT_LITERAL,
+    JE_NODE_STRING_LITERAL,
+    JE_NODE_BOOL_LITERAL,
+    JE_NODE_CAST_INT_TO_STRING,
+    JE_NODE_CAST_FLOAT_TO_STRING,
+    JE_NODE_CAST_BOOL_TO_STRING,
+    JE_NODE_CAST_STRING_TO_INT,
+    JE_NODE_CAST_FLOAT_TO_INT,
+    JE_NODE_CAST_BOOL_TO_INT,
+    JE_NODE_CAST_INT_TO_FLOAT,
+    JE_NODE_CAST_STRING_TO_FLOAT,
+    JE_NODE_CAST_BOOL_TO_FLOAT,
+    JE_NODE_CAST_INT_TO_BOOL,
+    JE_NODE_CAST_STRING_TO_BOOL,
+    JE_NODE_CAST_FLOAT_TO_BOOL,
+    JE_NODE_FUNCTION_CALL_INT,
+    JE_NODE_FUNCTION_CALL_FLOAT,
+    JE_NODE_FUNCTION_CALL_BOOL,
+    JE_NODE_FUNCTION_CALL_STRING
+};
+
+enum je_mem_tag_t {
+    JE_MEM_TAG_NAME,
+    JE_MEM_TAG_VALUE,
+    JE_MEM_TAG_VARIABLE_DEF,
+    JE_MEM_TAG_FUNCTION_DEF,
+    JE_MEM_TAG_AST_NODE,
+    JE_MEM_TAG_STRING,
+    JE_MEM_TAG_NODE_CHILD_ARRAY,
+    JE_MEM_TAG_TYPE_DATA,
+    JE_MEM_TAG_PARAM_TYPES,
+    JE_MEM_TAG_COUNT,
+};
+
 // -----------------------------------------------------------------------
 // TYPES
 // -----------------------------------------------------------------------
-
-// TODO: Replace pointers with offsets to reduce sizes?
 
 #ifdef JE_COMPILER_MSVC
 // Smaller size gets us more speed than the miss-alignment penalty.
@@ -606,73 +616,104 @@ typedef struct je_value_t {
 } je_value_t;
 
 typedef struct je_variable_def_t {
+    // 2
     uint16_t                        next_offset;
+    // 2
     uint16_t                        name_index;
+    // 1
     uint8_t                         type : 4;
     uint8_t                         is_constant : 4;
-    // Note: Struct is over-allocated, the value of the struct 
-    //       immediately follows it.
+    // Note: Struct is over-allocated, the value of the variable 
+    //       immediately follows it. Type is used to disambiguate.
 } je_variable_def_t;
 
 typedef struct je_func_def_t {
+    // 4/8
     je_func_t                       function;
-    uint16_t                        param_types_data;                        // If less than 4 parameters the types are encoded in this, if more its an offset to an array of uint16_t
+    // 2
     uint16_t                        next_offset;
+    // 2
     uint16_t                        name_index;
+    // 2
+    uint16_t                        param_types_data;                        // If less than 4 parameters the types are encoded in this, if more its an offset to an array of uint16_t
+    // 1
     uint8_t                         return_type : 4;
     uint8_t                         param_count : 3;
     uint8_t                         is_deterministic : 1;
 } je_func_def_t;
 
 typedef struct je_ast_node_t {     
+    // 2 - could re-encode as relative to drop one byte
     uint16_t                        child_offset;
+    // 2
     uint16_t                        type_data;                              // Offset to either a variable, function or value. What it points to depends on the node type.
+    // 1
     uint8_t                         type : 8;
+    // 1
     uint8_t                         child_count : 4;
     uint8_t                         pad0 : 4;
+    // 1
     uint8_t                         return_type : 4;
     uint8_t                         param_count : 3;
     uint8_t                         is_constant : 1;
 } je_ast_node_t;
 
 typedef struct je_jit_register_allocation_t {
-    int                             alloc_count;                            // Number of times the register has been allocated, if > 1 registers are pushed on to the stack to avoid spilling.
-    int                             alloc_index;                            // Constantly incrementing number across all registers, used to see what is most "new"
+    uint32_t                        alloc_index;                            // Constantly incrementing number across all registers, used to see what is most "new"
+    uint16_t                        alloc_count;                            // Number of times the register has been allocated, if > 1 registers are pushed on to the stack to avoid spilling.
 } je_jit_register_allocation_t;
 
 typedef struct je_context_t {
-    int                             flags;                                  // Flags controling the contexts behaviour.
-    char*                           mem_arena;                              // Block of memory that all persistent allocated memory is stored in. Used as a stack allocator.
-    size_t                          mem_arena_offset;                       // Next locations in the mem_arena to allocate from.
-    bool                            mem_arena_frozen;                       // If set to true we will assert if allocations are attempted. Used during jit compiling.
-    char*                           transient_mem_arena;                    // Block of memory that all transient allocations using during evaluation is stored in. Used as a stack allocator.
-    size_t                          transient_mem_arena_offset;             // Next locations in the transient_mem_arena_offset to allocate from.
-    size_t                          mem_tag_allocations[JE_MEM_TAG_COUNT];  // Tracks how much memory is allocated by tag (does not reset transient!).
-    const char*                     source;                                 // Pointer to source code string
+    char                            error_msg[128];                         // Error message from the last failing call.
+
+#ifdef JE_JIT_AVAILABLE
+    je_jit_register_allocation_t    jit_register_allocation[20];            // Allocation of registers used when JIT compiling code.
+#endif
+
+    uint16_t                        mem_tag_allocations[JE_MEM_TAG_COUNT];  // Tracks how much memory is allocated by tag (does not reset transient!).
+
+    je_value_t                      result;                                 // Result of the last evaluation call.
+    je_value_t                      function_params[JE_MAX_PARAMETERS];     // Parameters passed into the last function called.
+    je_value_t                      function_result;                        // Return value from function called
+
+    //const char*                     source;                               // Pointer to source code string
     const char*                     read_ptr;                               // Read pointer into source string
     je_variable_def_t*              variable_head;                          // Head of the variable linked list.
     je_func_def_t*                  function_head;                          // Head of the function linked list.
     je_name_t*                      name_head;                              // Head of the name linked list.
-    je_value_t                      result;                                 // Result of the last evaluation call.
-    int                             error_code;                             // Last error that occured in the context.
-    char                            error_msg[512];                         // Error message from the last failing call.
     je_ast_node_t*                  ast_root;                               // Root node in the ast graph.
     je_func_def_t*                  active_function;                        // Pointer to the function currently being called.
-    je_value_t                      function_params[JE_MAX_PARAMETERS];     // Parameters passed into the last function called.
-    je_value_t                      function_result;                        // Return value from function called
-    bool                            jit_compiled;                           // If the compiled expression is jit compiled.
-    char*                           jit_executable_memory;                  // Executable memory containing the JIT'd code.
-    int                             jit_executable_memory_length;           // Use of executable memory region allocated for JIT.
+    char                            mem_arena[JE_MEM_ARENA_SIZE];           // Block of memory that all persistent allocated memory is stored in. Used as a stack allocator.
+    char                            transient_mem_arena[JE_MEM_ARENA_SIZE]; // Block of memory that all transient allocations using during evaluation is stored in. Used as a stack allocator.
+#ifdef JE_JIT_AVAILABLE
     char*                           jit_write_buffer;                       // Start of buffer to generate JIT code into.
-    int                             jit_write_buffer_len;                   // Length of write buffer.
+    char*                           jit_executable_memory;                  // Executable memory containing the JIT'd code.
     char*                           jit_write_ptr;                          // Current write pointer for generating JIT code.
-    bool                            jit_write_buffer_overflow;              // If we ran out of space while emitting JIT code.
-    je_jit_register_allocation_t    jit_register_allocation[64];            // Allocation of registers used when JIT compiling code.
+#endif
+
+    int                             error_code;                             // Last error that occured in the context.
+#ifdef JE_JIT_AVAILABLE
+    int                             jit_executable_memory_length;           // Use of executable memory region allocated for JIT.
+    int                             jit_write_buffer_len;                   // Length of write buffer.
     int                             jit_register_allocation_counter;        // Count of every time a register was allocated.
-    int                             jit_instruction_num;                    // Number of instructions in the JIT code
-    int                             jit_code_bytes;                         // Number of bytes the JIT code takes up.
-    int                             jit_stack_bytes;                        // How many bytes are currently pushed to the stack during jit emission.
-    bool                            compiled;                               // If this context has been compiled.
+#endif
+
+#ifdef JE_JIT_AVAILABLE
+    uint16_t                        jit_instruction_num;                    // Number of instructions in the JIT code
+    uint16_t                        jit_code_bytes;                         // Number of bytes the JIT code takes up.
+    uint16_t                        jit_stack_bytes;                        // How many bytes are currently pushed to the stack during jit emission.
+#endif
+
+    uint16_t                        mem_arena_offset;                       // Next locations in the mem_arena to allocate from.
+    uint16_t                        transient_mem_arena_offset;             // Next locations in the transient_mem_arena_offset to allocate from.
+
+    uint8_t                         flags;                                  // Flags controling the contexts behaviour.
+    bool                            mem_arena_frozen : 1;                   // If set to true we will assert if allocations are attempted. Used during jit compiling.
+    bool                            compiled : 1;                           // If this context has been compiled.
+#ifdef JE_JIT_AVAILABLE
+    bool                            jit_compiled : 1;                       // If the compiled expression is jit compiled.
+    bool                            jit_write_buffer_overflow : 1;          // If we ran out of space while emitting JIT code.
+#endif
 } je_context_t;
 
 #ifdef JE_COMPILER_MSVC
@@ -758,10 +799,12 @@ int je_alloc_transient(je_context_t* context, size_t size, char** ptr, int tag) 
         je_store_error(context, JE_RESULT_OOM, NULL);
         return context->error_code;
     }
-    printf("je_alloc_transient size=%i tag=%s offset=%i padding=%i\n", (int)size, je_mem_tag_name(tag), (int)context->mem_arena_offset, align_padding);
+    if (context->flags & JE_FLAG_DEBUG_MEM_LOGGING) {
+        printf("je_alloc_transient size=%i tag=%s offset=%i padding=%i\n", (int)size, je_mem_tag_name(tag), (int)context->mem_arena_offset, align_padding);
+    }
     *ptr = context->transient_mem_arena + context->transient_mem_arena_offset + align_padding;
-    context->transient_mem_arena_offset += size + align_padding;
-    context->mem_tag_allocations[tag] += size;
+    context->transient_mem_arena_offset += (uint16_t)(size + align_padding);
+    context->mem_tag_allocations[tag] += (uint16_t)(size);
     assert(((size_t)*ptr % JE_MEM_ARENA_ALIGN) == 0);
     return JE_RESULT_SUCCESS;
 }
@@ -778,10 +821,12 @@ int je_alloc(je_context_t* context, size_t size, char** ptr, int tag) {
         je_store_error(context, JE_RESULT_OOM, NULL);
         return context->error_code;
     }
-    printf("je_alloc size=%i tag=%s offset=%i padding=%i\n", (int)size, je_mem_tag_name(tag), (int)context->mem_arena_offset, align_padding);
+    if (context->flags & JE_FLAG_DEBUG_MEM_LOGGING) {
+        printf("je_alloc size=%i tag=%s offset=%i padding=%i\n", (int)size, je_mem_tag_name(tag), (int)context->mem_arena_offset, align_padding);
+    }
     *ptr = context->mem_arena + context->mem_arena_offset + align_padding;
-    context->mem_arena_offset += size + align_padding;
-    context->mem_tag_allocations[tag] += size;
+    context->mem_arena_offset += (uint16_t)(size + align_padding);
+    context->mem_tag_allocations[tag] += (uint16_t)(size);
     assert(((size_t)*ptr % JE_MEM_ARENA_ALIGN) == 0);
     return JE_RESULT_SUCCESS;
 }
@@ -1445,9 +1490,13 @@ void je_memory_stats(je_context_t* context, int* permanent_mem_used, int* transi
     if (transient_mem_used != NULL) {
         *transient_mem_used = (int)context->transient_mem_arena_offset;
     }
+#ifdef JE_JIT_AVAILABLE
     if (executable_mem_used != NULL) {
         *executable_mem_used = (int)context->jit_executable_memory_length;
     }
+#else
+    *executable_mem_used = 0;
+#endif
 }
 
 void je_intrinsic_int_to_string(je_context_t* ctx) {
@@ -1717,14 +1766,6 @@ int je_new_context(je_context_t* context, int flags) {
 
     memset(context, 0, sizeof(struct je_context_t));
     context->flags = flags;
-    context->mem_arena = malloc(JE_MEM_ARENA_SIZE);
-    if (context->mem_arena == NULL) {
-        return JE_RESULT_OOM;
-    }
-    context->transient_mem_arena = malloc(JE_MEM_ARENA_SIZE);
-    if (context->transient_mem_arena == NULL) {
-        return JE_RESULT_OOM;
-    }
 
     // We use offsets in various places with 0 as a sentinel/null value, so always start offsets at 1.
     context->mem_arena_offset = 1;
@@ -1745,12 +1786,10 @@ int je_new_context(je_context_t* context, int flags) {
 }
 
 int je_free_context(je_context_t* context) {
-    for (int i = 0; i < JE_MEM_TAG_COUNT; i++) {
-        printf("%s : %i bytes\n", je_mem_tag_name(i), (int)context->mem_tag_allocations[i]);
-    }
-    if (context->mem_arena != NULL) {
-        free(context->mem_arena);
-        context->mem_arena = NULL;
+    if (context->flags & JE_FLAG_DEBUG_MEM_LOGGING) {
+        for (int i = 0; i < JE_MEM_TAG_COUNT; i++) {
+            printf("%s : %i bytes\n", je_mem_tag_name(i), (int)context->mem_tag_allocations[i]);
+        }
     }
 #ifdef JE_JIT_AVAILABLE
     if (context->jit_compiled) {
@@ -1821,12 +1860,14 @@ int je_bind_variable_string(je_context_t* context, const char* name, bool is_con
     variable->is_constant = is_constant;
     variable->type = JE_TYPE_STRING;
 
-    int len = strlen(value);
+    int len = (int)strlen(value);
     char* copy;
     ret = je_alloc(context, len + 1, &copy, JE_MEM_TAG_STRING);
     if (ret < 0) {
         return ret;
     }
+
+    memcpy(copy, value, len + 1);
 
     je_set_variable_string(variable, copy);
 
@@ -3713,22 +3754,27 @@ int je_eval_slow(je_context_t* context, je_ast_node_t* node, je_value_t* result)
     return JE_RESULT_SUCCESS;
 }
 
+#ifdef JE_JIT_AVAILABLE
 int je_eval_jit(je_context_t* context, je_ast_node_t* node, je_value_t* result) {
     je_jit_func_t func = (je_jit_func_t)context->jit_executable_memory;
     func();
     return JE_RESULT_SUCCESS;
 }
+#endif
 
 int je_eval(je_context_t* context) {    
     context->transient_mem_arena_offset = 0;
 
+#ifdef JE_JIT_AVAILABLE
     if (context->jit_compiled) {
         int ret = je_eval_jit(context, context->ast_root, &context->result);
         if (ret < 0) {
             return ret;
         }
     }
-    else {
+    else 
+#endif
+    {
         int ret = je_eval_slow(context, context->ast_root, &context->result);
         if (ret < 0) {
             return ret;
@@ -3750,16 +3796,20 @@ int je_compile(je_context_t* context, const char* source) {
         return JE_RESULT_CANNOT_COMPILE_MULTIPLE_TIMES;
     }
     context->compiled = true;
+#ifdef JE_JIT_AVAILABLE
     context->jit_compiled = false;
-    context->source = source;
-    context->read_ptr = context->source;
+#endif
+    context->read_ptr = source;
 
-    printf("je_name_t = %i\n", (int)sizeof(je_name_t));
-    printf("je_func_def_t = %i\n", (int)sizeof(je_func_def_t));
-    printf("je_variable_def_t = %i\n", (int)sizeof(je_variable_def_t));
-    printf("je_value_t = %i\n", (int)sizeof(je_value_t));
-    printf("je_ast_node_t = %i\n", (int)sizeof(je_ast_node_t));
-    printf("Pre-Compile Size: %i\n", (int)context->mem_arena_offset);
+    if (context->flags & JE_FLAG_DEBUG_MEM_LOGGING) {
+        printf("je_context_t = %i\n", (int)sizeof(je_context_t));
+        printf("je_name_t = %i\n", (int)sizeof(je_name_t));
+        printf("je_func_def_t = %i\n", (int)sizeof(je_func_def_t));
+        printf("je_variable_def_t = %i\n", (int)sizeof(je_variable_def_t));
+        printf("je_value_t = %i\n", (int)sizeof(je_value_t));
+        printf("je_ast_node_t = %i\n", (int)sizeof(je_ast_node_t));
+        printf("Pre-Compile Size: %i\n", (int)context->mem_arena_offset);
+    }
 
     // Parse the first expression.
     int ret = je_parse(context, &context->ast_root, JE_MAX_OPERATOR_PRECEDENCE);
@@ -4539,7 +4589,7 @@ int je_jit_x86_alloc_alu_reg(je_context_t* context) {
     }
 
     // If non are available, find the oldest one to spill to the stack.
-    int oldest_index = INT32_MAX;
+    uint32_t oldest_index = UINT32_MAX;
     int oldest_reg = 0;
     for (int i = 0; i < gp_registers_num; i++) {
         int reg = gp_registers[i];
