@@ -606,11 +606,12 @@ typedef struct je_value_t {
 } je_value_t;
 
 typedef struct je_variable_def_t {
-    je_value_t                      value;
     uint16_t                        next_offset;
     uint16_t                        name_index;
     uint8_t                         type : 4;
     uint8_t                         is_constant : 4;
+    // Note: Struct is over-allocated, the value of the struct 
+    //       immediately follows it.
 } je_variable_def_t;
 
 typedef struct je_func_def_t {
@@ -757,7 +758,7 @@ int je_alloc_transient(je_context_t* context, size_t size, char** ptr, int tag) 
         je_store_error(context, JE_RESULT_OOM, NULL);
         return context->error_code;
     }
-    //printf("je_alloc_transient size=%i tag=%s offset=%i padding=%i\n", (int)size, je_mem_tag_name(tag), (int)context->mem_arena_offset, align_padding);
+    printf("je_alloc_transient size=%i tag=%s offset=%i padding=%i\n", (int)size, je_mem_tag_name(tag), (int)context->mem_arena_offset, align_padding);
     *ptr = context->transient_mem_arena + context->transient_mem_arena_offset + align_padding;
     context->transient_mem_arena_offset += size + align_padding;
     context->mem_tag_allocations[tag] += size;
@@ -777,7 +778,7 @@ int je_alloc(je_context_t* context, size_t size, char** ptr, int tag) {
         je_store_error(context, JE_RESULT_OOM, NULL);
         return context->error_code;
     }
-    //printf("je_alloc size=%i tag=%s offset=%i padding=%i\n", (int)size, je_mem_tag_name(tag), (int)context->mem_arena_offset, align_padding);
+    printf("je_alloc size=%i tag=%s offset=%i padding=%i\n", (int)size, je_mem_tag_name(tag), (int)context->mem_arena_offset, align_padding);
     *ptr = context->mem_arena + context->mem_arena_offset + align_padding;
     context->mem_arena_offset += size + align_padding;
     context->mem_tag_allocations[tag] += size;
@@ -1129,12 +1130,62 @@ int je_find_or_create_variable(je_context_t* context, const char* name, int type
         }
         return JE_RESULT_SUCCESS;
     }
-    ret = je_alloc(context, sizeof(je_variable_def_t), (char**)variable, JE_MEM_TAG_VARIABLE_DEF);
+
+    int data_size = 0;
+    switch (type) {
+        case JE_TYPE_BOOL:      data_size = sizeof(int);    break;
+        case JE_TYPE_INT:       data_size = sizeof(int);    break;
+        case JE_TYPE_STRING:    data_size = sizeof(char*);  break;
+        case JE_TYPE_FLOAT:     data_size = sizeof(float);  break;
+        default:                assert(false);              break;
+    }
+
+    ret = je_alloc(context, sizeof(je_variable_def_t) + data_size, (char**)variable, JE_MEM_TAG_VARIABLE_DEF);
     if (ret < 0) {
         return ret;
     }
     (*variable)->name_index = index;
     return JE_RESULT_SUCCESS;    
+}
+
+char** je_get_variable_string(je_variable_def_t* variable) {
+    assert(variable->type == JE_TYPE_STRING);
+    char* ptr = ((char*)variable) + sizeof(je_variable_def_t);
+    return (char**)ptr;
+}
+
+float* je_get_variable_float(je_variable_def_t* variable) {
+    assert(variable->type == JE_TYPE_FLOAT);
+    char* ptr = ((char*)variable) + sizeof(je_variable_def_t);
+    return (float*)ptr;
+}
+
+int* je_get_variable_int(je_variable_def_t* variable) {
+    assert(variable->type == JE_TYPE_INT);
+    char* ptr = ((char*)variable) + sizeof(je_variable_def_t);
+    return (int*)ptr;
+}
+
+int* je_get_variable_bool(je_variable_def_t* variable) {
+    assert(variable->type == JE_TYPE_BOOL);
+    char* ptr = ((char*)variable) + sizeof(je_variable_def_t);
+    return (int*)ptr;
+}
+
+void je_set_variable_string(je_variable_def_t* variable, char* value) {
+    *je_get_variable_string(variable) = value;
+}
+
+void je_set_variable_float(je_variable_def_t* variable, float value) {
+    *je_get_variable_float(variable) = value;
+}
+
+void je_set_variable_int(je_variable_def_t* variable, int value) {
+    *je_get_variable_int(variable) = value;
+}
+
+void je_set_variable_bool(je_variable_def_t* variable, int value) {
+    *je_get_variable_bool(variable) = value;
 }
 
 je_func_def_t* je_find_function(je_context_t* context, uint16_t name_index) {
@@ -1718,9 +1769,11 @@ int je_bind_variable_int(je_context_t* context, const char* name, bool is_consta
 
     variable->is_constant = is_constant;
     variable->type = JE_TYPE_INT;
-    variable->value.int_value = value;
     variable->next_offset = (uint16_t)(context->variable_head ? ((char*)context->variable_head - (char*)context->mem_arena) : 0);
     context->variable_head = variable;
+
+    je_set_variable_int(variable, value);
+
     return JE_RESULT_SUCCESS;
 }
 
@@ -1733,9 +1786,11 @@ int je_bind_variable_float(je_context_t* context, const char* name, bool is_cons
 
     variable->is_constant = is_constant;
     variable->type = JE_TYPE_FLOAT;
-    variable->value.float_value = value;
     variable->next_offset = (uint16_t)(context->variable_head ? ((char*)context->variable_head - (char*)context->mem_arena) : 0);
     context->variable_head = variable;
+
+    je_set_variable_float(variable, value);
+
     return JE_RESULT_SUCCESS;
 }
 
@@ -1748,9 +1803,11 @@ int je_bind_variable_bool(je_context_t* context, const char* name, bool is_const
 
     variable->is_constant = is_constant;
     variable->type = JE_TYPE_BOOL;
-    variable->value.bool_value = value;
     variable->next_offset = (uint16_t)(context->variable_head ? ((char*)context->variable_head - (char*)context->mem_arena) : 0);
     context->variable_head = variable;
+
+    je_set_variable_bool(variable, value);
+
     return JE_RESULT_SUCCESS;
 }
 
@@ -1761,15 +1818,21 @@ int je_bind_variable_string(je_context_t* context, const char* name, bool is_con
         return ret;
     }
 
-    ret = je_realloc_string(context, value, &variable->value, -1, false);
+    variable->is_constant = is_constant;
+    variable->type = JE_TYPE_STRING;
+
+    int len = strlen(value);
+    char* copy;
+    ret = je_alloc(context, len + 1, &copy, JE_MEM_TAG_STRING);
     if (ret < 0) {
         return ret;
     }
 
-    variable->is_constant = is_constant;
-    variable->type = JE_TYPE_STRING;
+    je_set_variable_string(variable, copy);
+
     variable->next_offset = (uint16_t)(context->variable_head ? ((char*)context->variable_head - (char*)context->mem_arena) : 0);
     context->variable_head = variable;
+
     return JE_RESULT_SUCCESS;
 }
 
@@ -2811,10 +2874,10 @@ void je_print_ast(je_context_t* context, je_ast_node_t* node, int depth, int chi
             printf("%s (%u)", je_node_name(node->type), je_get_ast_node_function(context, node)->name_index);
             break;
         }
-        case JE_NODE_VARIABLE_BOOL:         printf("%s (%i)", je_node_name(node->type), je_get_ast_node_variable(context, node)->value.bool_value); break;
-        case JE_NODE_VARIABLE_STRING:       printf("%s (%s)", je_node_name(node->type), je_get_ast_node_variable(context, node)->value.string_value); break;
-        case JE_NODE_VARIABLE_FLOAT:        printf("%s (%f)", je_node_name(node->type), je_get_ast_node_variable(context, node)->value.float_value); break;
-        case JE_NODE_VARIABLE_INT:          printf("%s (%i)", je_node_name(node->type), je_get_ast_node_variable(context, node)->value.int_value); break;
+        case JE_NODE_VARIABLE_BOOL:         printf("%s (%i)", je_node_name(node->type), *je_get_variable_bool(je_get_ast_node_variable(context, node))); break;
+        case JE_NODE_VARIABLE_STRING:       printf("%s (%s)", je_node_name(node->type), *je_get_variable_string(je_get_ast_node_variable(context, node))); break;
+        case JE_NODE_VARIABLE_FLOAT:        printf("%s (%f)", je_node_name(node->type), *je_get_variable_float(je_get_ast_node_variable(context, node))); break;
+        case JE_NODE_VARIABLE_INT:          printf("%s (%i)", je_node_name(node->type), *je_get_variable_int(je_get_ast_node_variable(context, node))); break;
         case JE_NODE_BOOL_LITERAL:          printf("%s (%i)", je_node_name(node->type), *je_get_ast_node_bool(context, node)); break;
         case JE_NODE_STRING_LITERAL:        printf("%s (%s)", je_node_name(node->type), *je_get_ast_node_string(context, node)); break;
         case JE_NODE_FLOAT_LITERAL:         printf("%s (%f)", je_node_name(node->type), *je_get_ast_node_float(context, node)); break;
@@ -3532,22 +3595,22 @@ int je_eval_slow(je_context_t* context, je_ast_node_t* node, je_value_t* result)
         }
         case JE_NODE_VARIABLE_BOOL: {
             result->type = JE_TYPE_BOOL;
-            result->bool_value = je_get_ast_node_variable(context, node)->value.bool_value;
+            result->bool_value = *je_get_variable_bool(je_get_ast_node_variable(context, node));
             break;
         }
         case JE_NODE_VARIABLE_INT: {
             result->type = JE_TYPE_INT;
-            result->int_value = je_get_ast_node_variable(context, node)->value.int_value;
+            result->int_value = *je_get_variable_int(je_get_ast_node_variable(context, node));
             break;
         }
         case JE_NODE_VARIABLE_FLOAT: {
             result->type = JE_TYPE_FLOAT;
-            result->float_value = je_get_ast_node_variable(context, node)->value.float_value;
+            result->float_value = *je_get_variable_float(je_get_ast_node_variable(context, node));
             break;
         }
         case JE_NODE_VARIABLE_STRING: {
             result->type = JE_TYPE_STRING;
-            result->string_value = je_get_ast_node_variable(context, node)->value.string_value;
+            result->string_value = *je_get_variable_string(je_get_ast_node_variable(context, node));
             break;
         }
         case JE_NODE_NEG_FLOAT: {
@@ -3691,12 +3754,12 @@ int je_compile(je_context_t* context, const char* source) {
     context->source = source;
     context->read_ptr = context->source;
 
-    //printf("je_name_t = %i\n", (int)sizeof(je_name_t));
-    //printf("je_func_def_t = %i\n", (int)sizeof(je_func_def_t));
-    //printf("je_variable_def_t = %i\n", (int)sizeof(je_variable_def_t));
-    //printf("je_value_t = %i\n", (int)sizeof(je_value_t));
-    //printf("je_ast_node_t = %i\n", (int)sizeof(je_ast_node_t));
-    //printf("Pre-Compile Size: %i\n", (int)context->mem_arena_offset);
+    printf("je_name_t = %i\n", (int)sizeof(je_name_t));
+    printf("je_func_def_t = %i\n", (int)sizeof(je_func_def_t));
+    printf("je_variable_def_t = %i\n", (int)sizeof(je_variable_def_t));
+    printf("je_value_t = %i\n", (int)sizeof(je_value_t));
+    printf("je_ast_node_t = %i\n", (int)sizeof(je_ast_node_t));
+    printf("Pre-Compile Size: %i\n", (int)context->mem_arena_offset);
 
     // Parse the first expression.
     int ret = je_parse(context, &context->ast_root, JE_MAX_OPERATOR_PRECEDENCE);
@@ -5045,11 +5108,11 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
             int addr_reg = je_jit_x86_alloc_alu_reg(context);
             int dst_reg = je_jit_x86_alloc_alu_reg(context);
 #ifdef JE_ISA_X64
-            uint64_t address = (uint64_t)&je_get_ast_node_variable(context, node)->value.int_value;
+            uint64_t address = (uint64_t)je_get_variable_int(je_get_ast_node_variable(context, node));
             je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
             je_jit_x86_emit_mov_r32_direct_r64_addr(context, dst_reg, addr_reg);
 #else
-            uint32_t address = (uint32_t)&je_get_ast_node_variable(context, node)->value.int_value;
+            uint32_t address = (uint32_t)je_get_variable_int(je_get_ast_node_variable(context, node));
             je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
             je_jit_x86_emit_mov_r32_direct_r32_addr(context, dst_reg, addr_reg);
 #endif
@@ -5148,11 +5211,11 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
             int addr_reg = je_jit_x86_alloc_alu_reg(context);
             int dst_reg = je_jit_x86_alloc_alu_reg(context);
 #ifdef JE_ISA_X64
-            uint64_t address = (uint64_t)&je_get_ast_node_variable(context, node)->value.bool_value;
+            uint64_t address = (uint64_t)je_get_variable_bool(je_get_ast_node_variable(context, node));
             je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
             je_jit_x86_emit_mov_r32_direct_r64_addr(context, dst_reg, addr_reg);
 #else
-            uint32_t address = (uint32_t)&je_get_ast_node_variable(context, node)->value.bool_value;
+            uint32_t address = (uint32_t)je_get_variable_bool(je_get_ast_node_variable(context, node));
             je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
             je_jit_x86_emit_mov_r32_direct_r32_addr(context, dst_reg, addr_reg);
 #endif
@@ -5304,10 +5367,10 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
             int xmm_reg = je_jit_x86_alloc_xmm_reg(context);
 
 #ifdef JE_ISA_X64
-            uint64_t address = (uint64_t)&je_get_ast_node_variable(context, node)->value.float_value;
+            uint64_t address = (uint64_t)je_get_variable_float(je_get_ast_node_variable(context, node));
             je_jit_x86_emit_mov_r64_imm64(context, alu_reg, address);
 #else
-            uint32_t address = (uint32_t)&je_get_ast_node_variable(context, node)->value.float_value;
+            uint32_t address = (uint32_t)je_get_variable_float(je_get_ast_node_variable(context, node));
             je_jit_x86_emit_mov_r32_imm32(context, alu_reg, address);
 #endif
 
@@ -5378,11 +5441,11 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
             int addr_reg = je_jit_x86_alloc_alu_reg(context);
             int dst_reg = je_jit_x86_alloc_alu_reg(context);
 #ifdef JE_ISA_X64
-            uint64_t address = (uint64_t)&je_get_ast_node_variable(context, node)->value.string_value;
+            uint64_t address = (uint64_t)je_get_variable_string(je_get_ast_node_variable(context, node));
             je_jit_x86_emit_mov_r64_imm64(context, addr_reg, address);
             je_jit_x86_emit_mov_r64_direct_r64_addr(context, dst_reg, addr_reg);
 #else
-            uint32_t address = (uint32_t)&je_get_ast_node_variable(context, node)->value.string_value;
+            uint32_t address = (uint32_t)je_get_variable_string(je_get_ast_node_variable(context, node));
             je_jit_x86_emit_mov_r32_imm32(context, addr_reg, address);
             je_jit_x86_emit_mov_r32_direct_r32_addr(context, dst_reg, addr_reg);
 #endif
