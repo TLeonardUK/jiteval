@@ -249,6 +249,14 @@ extern "C" {
 #define JE_MAX_STRING_CONSTANT_LENGTH   (256)
 #endif
 
+// If enabled then hashes will be used for function/variable/etc names rather than strings
+// This reduces memory usage but will make error messages using the name less helpful. 
+// This is expected to only be enabled in production environments where the expressions
+// are constant and errors are unexpected.
+#ifndef JE_USE_NAME_HASHES
+#define JE_USE_NAME_HASHES              (1)
+#endif
+
 // -----------------------------------------------------------------------
 // HEADER
 // -----------------------------------------------------------------------
@@ -548,7 +556,8 @@ void je_memory_stats(je_context_t* context, int* permanent_mem_used, int* transi
 #define JE_MEM_TAG_STRING               (5)
 #define JE_MEM_TAG_NODE_CHILD_ARRAY     (6)
 #define JE_MEM_TAG_TYPE_DATA            (7)
-#define JE_MEM_TAG_COUNT                (8)
+#define JE_MEM_TAG_PARAM_TYPES          (8)
+#define JE_MEM_TAG_COUNT                (9)
 
 #define JE_MAX_OPERATOR_PRECEDENCE      (9)
 
@@ -605,15 +614,10 @@ typedef struct je_variable_def_t {
 } je_variable_def_t;
 
 typedef struct je_func_def_t {
-    //8
     je_func_t                       function;
-    //8                             todo: encode this into uint16_t 4 bytes per type, and turn it into a data offset if we have more parameters than 4. 6 bytes saved.
-    uint8_t                         parm_types[JE_MAX_PARAMETERS];
-    //2
+    uint16_t                        param_types_data;                        // If less than 4 parameters the types are encoded in this, if more its an offset to an array of uint16_t
     uint16_t                        next_offset;
-    //2
     uint16_t                        name_index;
-    //1
     uint8_t                         return_type : 4;
     uint8_t                         param_count : 3;
     uint8_t                         is_deterministic : 1;
@@ -666,6 +670,7 @@ typedef struct je_context_t {
     int                             jit_register_allocation_counter;        // Count of every time a register was allocated.
     int                             jit_instruction_num;                    // Number of instructions in the JIT code
     int                             jit_code_bytes;                         // Number of bytes the JIT code takes up.
+    int                             jit_stack_bytes;                        // How many bytes are currently pushed to the stack during jit emission.
     bool                            compiled;                               // If this context has been compiled.
 } je_context_t;
 
@@ -686,6 +691,10 @@ uint32_t je_hash32(const char* input) {
     return hash;
 }
 
+uint16_t je_hash16(const char* input) {
+    return je_hash32(input) % UINT16_MAX;
+}
+
 const char* je_mem_tag_name(int tag) {
     switch (tag) {        
         case JE_MEM_TAG_NAME:               return "je_name_t";
@@ -696,6 +705,7 @@ const char* je_mem_tag_name(int tag) {
         case JE_MEM_TAG_STRING:             return "string";
         case JE_MEM_TAG_NODE_CHILD_ARRAY:   return "node child array";
         case JE_MEM_TAG_TYPE_DATA:          return "node type data";
+        case JE_MEM_TAG_PARAM_TYPES:        return "func param types array";
         default: assert(0);
     }
     return "unknown";
@@ -747,7 +757,7 @@ int je_alloc_transient(je_context_t* context, size_t size, char** ptr, int tag) 
         je_store_error(context, JE_RESULT_OOM, NULL);
         return context->error_code;
     }
-    //printf("je_alloc_transient %i (%s)\n", (int)size, je_mem_tag_name(tag));
+    //printf("je_alloc_transient size=%i tag=%s offset=%i padding=%i\n", (int)size, je_mem_tag_name(tag), (int)context->mem_arena_offset, align_padding);
     *ptr = context->transient_mem_arena + context->transient_mem_arena_offset + align_padding;
     context->transient_mem_arena_offset += size + align_padding;
     context->mem_tag_allocations[tag] += size;
@@ -767,7 +777,7 @@ int je_alloc(je_context_t* context, size_t size, char** ptr, int tag) {
         je_store_error(context, JE_RESULT_OOM, NULL);
         return context->error_code;
     }
-    //printf("je_alloc %i (%s)\n", (int)size, je_mem_tag_name(tag));
+    //printf("je_alloc size=%i tag=%s offset=%i padding=%i\n", (int)size, je_mem_tag_name(tag), (int)context->mem_arena_offset, align_padding);
     *ptr = context->mem_arena + context->mem_arena_offset + align_padding;
     context->mem_arena_offset += size + align_padding;
     context->mem_tag_allocations[tag] += size;
@@ -833,7 +843,46 @@ void je_set_node_child(je_context_t* context, je_ast_node_t* node, int index, je
     children_offsets[index] = child_offset;
 }
 
+void je_set_func_param_type(je_context_t* context, je_func_def_t* func, int index, int type) {
+    int nibble =  (index & 1);
+    uint16_t* encoded = 0;
+    if (func->param_count > 4) {
+        uint16_t* param_types = (uint16_t*)(context->mem_arena + func->param_types_data);
+        encoded = &param_types[index / 2];
+    } else {
+        encoded = &func->param_types_data;
+    }
+
+    if (nibble) {
+        *encoded = (*encoded & 0xFF00) | type;
+    } else {
+        *encoded = (*encoded & 0x00FF) | (type << 8);
+    }
+}
+
+int je_get_func_param_type(je_context_t* context, je_func_def_t* func, int index) {
+    int nibble = (index & 1);
+    uint16_t* encoded = 0;
+    if (func->param_count > 4) {
+        uint16_t* param_types = (uint16_t*)(context->mem_arena + func->param_types_data);
+        encoded = &param_types[index / 2];
+    }
+    else {
+        encoded = &func->param_types_data;
+    }
+
+    if (nibble) {
+        return (int)(*encoded & 0x00FF);
+    } else {
+        return (int)((*encoded & 0xFF00) >> 8);
+    }
+}
+
 uint16_t je_get_name_index(je_context_t* context, const char* name, uint16_t* index) {
+#if JE_USE_NAME_HASHES
+    * index = je_hash16(name);
+    return JE_RESULT_SUCCESS;
+#else
     uint16_t i = 0;
     je_name_t* last_name = NULL;
     for (je_name_t* ptr = context->name_head; ptr; /*empty*/) {
@@ -876,9 +925,13 @@ uint16_t je_get_name_index(je_context_t* context, const char* name, uint16_t* in
 
     *index = i;
     return JE_RESULT_SUCCESS;
+#endif
 }
 
 const char* je_get_name(je_context_t* context, uint16_t index) {
+#if JE_USE_NAME_HASHES
+    return "hashed";
+#else
     int i = 0;
     for (je_name_t* ptr = context->name_head; ptr; i++) {
         const char* name = (context->mem_arena + ptr->name_offset);
@@ -892,6 +945,7 @@ const char* je_get_name(je_context_t* context, uint16_t index) {
         }
     }
     return "";
+#endif
 }
 
 const char* je_token_name(int type) {
@@ -1119,8 +1173,20 @@ int je_find_or_create_function(je_context_t* context, const char* name, je_func_
     return JE_RESULT_SUCCESS;    
 }
 
-je_value_t* je_get_ast_node_value(je_context_t* context, je_ast_node_t* node) {
-    return (je_value_t*)(context->mem_arena + node->type_data);
+float* je_get_ast_node_float(je_context_t* context, je_ast_node_t* node) {
+    return (float*)(context->mem_arena + node->type_data);
+}
+
+int* je_get_ast_node_int(je_context_t* context, je_ast_node_t* node) {
+    return (int*)(context->mem_arena + node->type_data);
+}
+
+char** je_get_ast_node_string(je_context_t* context, je_ast_node_t* node) {
+    return (char**)(context->mem_arena + node->type_data);
+}
+
+int* je_get_ast_node_bool(je_context_t* context, je_ast_node_t* node) {
+    return je_get_ast_node_int(context, node);
 }
 
 je_func_def_t* je_get_ast_node_function(je_context_t* context, je_ast_node_t* node) {
@@ -1135,15 +1201,41 @@ int je_get_ast_node_name_index(je_context_t* context, je_ast_node_t* node) {
     return node->type_data;
 }
 
-int je_set_ast_node_value(je_context_t* context, je_ast_node_t* node, je_value_t* value) {
-    je_value_t* alloc_value;
-    int ret = je_alloc(context, sizeof(je_value_t), (char**)&alloc_value, JE_MEM_TAG_TYPE_DATA);
+int je_set_ast_node_float(je_context_t* context, je_ast_node_t* node, float value) {
+    float* alloc_value;
+    int ret = je_alloc(context, sizeof(float), (char**)&alloc_value, JE_MEM_TAG_TYPE_DATA);
     if (ret < 0) {
         return ret;
     }
-    *alloc_value = *value;
-    node->type_data = (uint32_t)((char*)alloc_value - context->mem_arena);
+    *alloc_value = value;
+    node->type_data = (uint16_t)((char*)alloc_value - context->mem_arena);
     return JE_RESULT_SUCCESS;
+}
+
+int je_set_ast_node_int(je_context_t* context, je_ast_node_t* node, int value) {
+    int* alloc_value;
+    int ret = je_alloc(context, sizeof(int), (char**)&alloc_value, JE_MEM_TAG_TYPE_DATA);
+    if (ret < 0) {
+        return ret;
+    }
+    *alloc_value = value;
+    node->type_data = (uint16_t)((char*)alloc_value - context->mem_arena);
+    return JE_RESULT_SUCCESS;
+}
+
+int je_set_ast_node_string(je_context_t* context, je_ast_node_t* node, char* value) {
+    char** alloc_value;
+    int ret = je_alloc(context, sizeof(char*), (char**)&alloc_value, JE_MEM_TAG_TYPE_DATA);
+    if (ret < 0) {
+        return ret;
+    }
+    *alloc_value = value;
+    node->type_data = (uint16_t)((char*)alloc_value - context->mem_arena);
+    return JE_RESULT_SUCCESS;
+}
+
+int je_set_ast_node_bool(je_context_t* context, je_ast_node_t* node, bool value) {
+    return je_set_ast_node_int(context, node, value);
 }
 
 int je_set_ast_node_function(je_context_t* context, je_ast_node_t* node, je_func_def_t* value) {
@@ -1359,7 +1451,9 @@ void je_intrinsic_string_concat(je_context_t* ctx) {
 
     char* buffer;
     int ret = je_alloc_transient(ctx, size, &buffer, JE_MEM_TAG_STRING);
-    assert(ret == JE_RESULT_SUCCESS); // TODO: Replace with a longjmp or similar to bail out when allocations fail.
+    if (ret == JE_RESULT_SUCCESS) {
+        assert(false);
+    }
 
     memcpy(buffer, a, a_len);
     memcpy(buffer + a_len, b, b_len);
@@ -1601,7 +1695,7 @@ int je_new_context(je_context_t* context, int flags) {
 
 int je_free_context(je_context_t* context) {
     for (int i = 0; i < JE_MEM_TAG_COUNT; i++) {
-        //printf("%s : %i bytes\n", je_mem_tag_name(i), (int)context->mem_tag_allocations[i]);
+        printf("%s : %i bytes\n", je_mem_tag_name(i), (int)context->mem_tag_allocations[i]);
     }
     if (context->mem_arena != NULL) {
         free(context->mem_arena);
@@ -1691,6 +1785,8 @@ int je_bind_function(je_context_t* context, const char* name, bool is_determinis
     function->is_deterministic = is_deterministic;
     function->function = func;
 
+    int param_types[JE_MAX_PARAMETERS];
+
     va_list list;
     va_start(list, return_type);
     while (1) {
@@ -1701,9 +1797,27 @@ int je_bind_function(je_context_t* context, const char* name, bool is_determinis
         if (function->param_count == JE_MAX_PARAMETERS) {
             return JE_RESULT_MAX_PARAMETER_COUNT_EXCEEDED;
         }
-        function->parm_types[function->param_count++] = arg_type;
+        param_types[function->param_count++] = arg_type;
     }
     va_end(list);
+
+    // If we have more than 4 parameters we need more space to encode our parameter types.
+    if (function->param_count > 4) {
+        uint16_t* allocation;
+        int allocation_size = (function->param_count + 1) / 2;
+        ret = je_alloc(context, allocation_size, (char**)&allocation, JE_MEM_TAG_PARAM_TYPES);
+        if (ret < 0) {
+            return ret;
+        }
+        memset(allocation, 0, allocation_size);
+        function->param_types_data = (uint16_t)((char*)allocation - (char*)context->mem_arena);
+    } else {
+        function->param_types_data = 0;
+    }
+
+    for (int i = 0; i < function->param_count; i++) {
+        je_set_func_param_type(context, function, i, param_types[i]);
+    }
 
     function->next_offset = (uint16_t)(context->function_head ? ((char*)context->function_head - (char*)context->mem_arena) : 0);
     context->function_head = function;
@@ -1718,7 +1832,7 @@ int je_get_parameter_int(je_context_t* context, int index, int* result) {
     if (index >= context->active_function->param_count) {
         return je_store_error(context, JE_RESULT_PARAMETER_INDEX_OUT_OF_BOUNDS, NULL);
     }
-    if (context->active_function->parm_types[index] != JE_TYPE_INT) {
+    if (je_get_func_param_type(context, context->active_function, index) != JE_TYPE_INT) {
         return je_store_error(context, JE_RESULT_WRONG_PARAMETER_TYPE, NULL);
     }
 
@@ -1734,7 +1848,7 @@ int je_get_parameter_float(je_context_t* context, int index, float* result) {
     if (index >= context->active_function->param_count) {
         return je_store_error(context, JE_RESULT_PARAMETER_INDEX_OUT_OF_BOUNDS, NULL);
     }
-    if (context->active_function->parm_types[index] != JE_TYPE_FLOAT) {
+    if (je_get_func_param_type(context, context->active_function, index) != JE_TYPE_FLOAT) {
         return je_store_error(context, JE_RESULT_WRONG_PARAMETER_TYPE, NULL);
     }
 
@@ -1750,7 +1864,7 @@ int je_get_parameter_bool(je_context_t* context, int index, int* result) {
     if (index >= context->active_function->param_count) {
         return je_store_error(context, JE_RESULT_PARAMETER_INDEX_OUT_OF_BOUNDS, NULL);
     }
-    if (context->active_function->parm_types[index] != JE_TYPE_BOOL) {
+    if (je_get_func_param_type(context, context->active_function, index) != JE_TYPE_BOOL) {
         return je_store_error(context, JE_RESULT_WRONG_PARAMETER_TYPE, NULL);
     }
 
@@ -1766,7 +1880,7 @@ int je_get_parameter_string(je_context_t* context, int index, const char** resul
     if (index >= context->active_function->param_count) {
         return je_store_error(context, JE_RESULT_PARAMETER_INDEX_OUT_OF_BOUNDS, NULL);
     }
-    if (context->active_function->parm_types[index] != JE_TYPE_STRING) {
+    if (je_get_func_param_type(context, context->active_function, index) != JE_TYPE_STRING) {
         return je_store_error(context, JE_RESULT_WRONG_PARAMETER_TYPE, NULL);
     }
 
@@ -2215,7 +2329,7 @@ int je_parse_term(je_context_t* context, je_ast_node_t** node) {
                 return ret;
             }
 
-            ret = je_set_ast_node_value(context, *node, &value);
+            ret = je_set_ast_node_string(context, *node, value.string_value);
             if (ret < 0) {
                 return ret;
             }
@@ -2310,10 +2424,7 @@ int je_parse_term(je_context_t* context, je_ast_node_t** node) {
             }
             (*node)->type = JE_NODE_FLOAT_LITERAL;
             
-            je_value_t value;
-            value.float_value = tok.float_value;
-
-            ret = je_set_ast_node_value(context, *node, &value);
+            ret = je_set_ast_node_float(context, *node, tok.float_value);
             if (ret < 0) {
                 return ret;
             }
@@ -2327,10 +2438,7 @@ int je_parse_term(je_context_t* context, je_ast_node_t** node) {
             }
             (*node)->type = JE_NODE_INT_LITERAL;
 
-            je_value_t value;
-            value.int_value = tok.int_value;
-
-            ret = je_set_ast_node_value(context, *node, &value);
+            ret = je_set_ast_node_int(context, *node, tok.int_value);
             if (ret < 0) {
                 return ret;
             }
@@ -2344,10 +2452,7 @@ int je_parse_term(je_context_t* context, je_ast_node_t** node) {
             }
             (*node)->type = JE_NODE_INT_LITERAL;
             
-            je_value_t value;
-            value.bool_value = tok.bool_value;
-
-            ret = je_set_ast_node_value(context, *node, &value);
+            ret = je_set_ast_node_bool(context, *node, tok.bool_value);
             if (ret < 0) {
                 return ret;
             }
@@ -2679,7 +2784,7 @@ int je_implicit_conversion(je_context_t* context, je_ast_node_t* node) {
                 node->type == JE_NODE_FUNCTION_CALL_BOOL ||
                 node->type == JE_NODE_FUNCTION_CALL_INT ||
                 node->type == JE_NODE_FUNCTION_CALL_FLOAT) {                
-                target_type = je_get_ast_node_function(context, node)->parm_types[i];
+                target_type = je_get_func_param_type(context, je_get_ast_node_function(context, node), i);
             }
             je_implicit_conversion_child(context, child, node, i, target_type);
         }
@@ -2710,10 +2815,10 @@ void je_print_ast(je_context_t* context, je_ast_node_t* node, int depth, int chi
         case JE_NODE_VARIABLE_STRING:       printf("%s (%s)", je_node_name(node->type), je_get_ast_node_variable(context, node)->value.string_value); break;
         case JE_NODE_VARIABLE_FLOAT:        printf("%s (%f)", je_node_name(node->type), je_get_ast_node_variable(context, node)->value.float_value); break;
         case JE_NODE_VARIABLE_INT:          printf("%s (%i)", je_node_name(node->type), je_get_ast_node_variable(context, node)->value.int_value); break;
-        case JE_NODE_BOOL_LITERAL:          printf("%s (%i)", je_node_name(node->type), je_get_ast_node_value(context, node)->bool_value); break;
-        case JE_NODE_STRING_LITERAL:        printf("%s (%s)", je_node_name(node->type), je_get_ast_node_value(context, node)->string_value); break;
-        case JE_NODE_FLOAT_LITERAL:         printf("%s (%f)", je_node_name(node->type), je_get_ast_node_value(context, node)->float_value); break;
-        case JE_NODE_INT_LITERAL:           printf("%s (%i)", je_node_name(node->type), je_get_ast_node_value(context, node)->int_value); break;
+        case JE_NODE_BOOL_LITERAL:          printf("%s (%i)", je_node_name(node->type), *je_get_ast_node_bool(context, node)); break;
+        case JE_NODE_STRING_LITERAL:        printf("%s (%s)", je_node_name(node->type), *je_get_ast_node_string(context, node)); break;
+        case JE_NODE_FLOAT_LITERAL:         printf("%s (%f)", je_node_name(node->type), *je_get_ast_node_float(context, node)); break;
+        case JE_NODE_INT_LITERAL:           printf("%s (%i)", je_node_name(node->type), *je_get_ast_node_int(context, node)); break;
         default:                            printf("%s", je_node_name(node->type)); break;
     }
     printf("\n");
@@ -3209,13 +3314,29 @@ int je_fold_node_constants(je_context_t* context, je_ast_node_t* node) {
                 je_set_node_child(context, node, i, NULL);
             }
             node->child_count = 0;
+            int ret = 0;
             switch (value.type) {
-                case JE_TYPE_BOOL:      node->type = JE_NODE_BOOL_LITERAL;   break;
-                case JE_TYPE_FLOAT:     node->type = JE_NODE_FLOAT_LITERAL;  break;
-                case JE_TYPE_STRING:    node->type = JE_NODE_STRING_LITERAL; break;
-                case JE_TYPE_INT:       node->type = JE_NODE_INT_LITERAL;    break;
+                case JE_TYPE_BOOL: {
+                    node->type = JE_NODE_BOOL_LITERAL;   
+                    ret = je_set_ast_node_bool(context, node, value.bool_value);
+                    break;
+                }
+                case JE_TYPE_FLOAT: {
+                    node->type = JE_NODE_FLOAT_LITERAL;
+                    ret = je_set_ast_node_float(context, node, value.float_value);
+                    break;
+                }
+                case JE_TYPE_STRING: {
+                    node->type = JE_NODE_STRING_LITERAL;
+                    ret = je_set_ast_node_string(context, node, value.string_value);
+                    break;
+                }
+                case JE_TYPE_INT: {
+                    node->type = JE_NODE_INT_LITERAL;
+                    ret = je_set_ast_node_int(context, node, value.int_value);
+                    break;
+                }
             }
-            int ret = je_set_ast_node_value(context, node, &value);
             if (ret < 0) {
                 return ret;
             }
@@ -3451,22 +3572,22 @@ int je_eval_slow(je_context_t* context, je_ast_node_t* node, je_value_t* result)
         }
         case JE_NODE_FLOAT_LITERAL: {
             result->type = JE_TYPE_FLOAT;
-            result->float_value = je_get_ast_node_value(context, node)->float_value;
+            result->float_value = *je_get_ast_node_float(context, node);
             break;
         }
         case JE_NODE_INT_LITERAL: {
             result->type = JE_TYPE_INT;
-            result->int_value = je_get_ast_node_value(context, node)->int_value;
+            result->int_value = *je_get_ast_node_int(context, node);
             break;
         }
         case JE_NODE_STRING_LITERAL: {
             result->type = JE_TYPE_STRING;
-            result->string_value = je_get_ast_node_value(context, node)->string_value;
+            result->string_value = *je_get_ast_node_string(context, node);
             break;
         }
         case JE_NODE_BOOL_LITERAL: {
             result->type = JE_TYPE_BOOL;
-            result->bool_value = je_get_ast_node_value(context, node)->bool_value;
+            result->bool_value = *je_get_ast_node_bool(context, node);
             break;
         }
         case JE_NODE_CAST_FLOAT_TO_INT: {
@@ -3901,17 +4022,20 @@ void je_jit_x86_emit_ret(je_context_t* context) {
 void je_jit_x86_emit_pop_r32(je_context_t* context, int src) {
     je_jit_x86_emit_bytes_1(context, 0x58 + src); // POP r64/16
     context->jit_instruction_num++;
+    context->jit_stack_bytes -= 4;
 }
 
 void je_jit_x86_emit_push_r32(je_context_t* context, int src) {
     je_jit_x86_emit_bytes_1(context, 0x50 + src); // PUSH r64/16
     context->jit_instruction_num++;
+    context->jit_stack_bytes += 4;
 }
 
 void je_jit_x86_emit_push_imm32(je_context_t* context, int imm32) {
     je_jit_x86_emit_bytes_1(context, 0x68); // PUSH imm32
     je_jit_x86_emit_imm32(context, imm32);
     context->jit_instruction_num++;
+    context->jit_stack_bytes += 4;
 }
 
 void je_jit_x86_emit_push_r64(je_context_t* context, int src) {
@@ -3920,6 +4044,7 @@ void je_jit_x86_emit_push_r64(je_context_t* context, int src) {
     uint8_t opcode_byte = 0xFF; // PUSH  r/m64/16
     je_jit_x86_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
     context->jit_instruction_num++;
+    context->jit_stack_bytes += 8;
 }
 
 void je_jit_x86_emit_pop_r64(je_context_t* context, int src) {
@@ -3928,6 +4053,7 @@ void je_jit_x86_emit_pop_r64(je_context_t* context, int src) {
     uint8_t opcode_byte = 0x8F; // POP r/m64/16
     je_jit_x86_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
     context->jit_instruction_num++;
+    context->jit_stack_bytes -= 8;
 }
 
 void je_jit_x86_emit_add_r32_r32(je_context_t* context, int dst, int src) {
@@ -4085,6 +4211,23 @@ void je_jit_x86_emit_and_r32_r32(je_context_t* context, int dst, int src) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, dst, src);
     uint8_t opcode_byte = 0x23; // AND r16/32/64 r/m16/32/64
     je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
+    context->jit_instruction_num++;
+}
+
+void je_jit_x86_emit_and_r32_imm32(je_context_t* context, int dst, uint32_t imm32) {
+    uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0, dst);
+    uint8_t opcode_byte = 0x81; // AND r/m16/32/64 imm16/32
+    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_x86_emit_imm32(context, imm32);
+    context->jit_instruction_num++;
+}
+
+void je_jit_x86_emit_and_r64_imm64_sign_extended(je_context_t* context, int dst, uint32_t imm32) {
+    uint8_t rex_byte = je_jit_x86_encode_rex(1, 0, 0, 0);
+    uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0, dst);
+    uint8_t opcode_byte = 0x81; // AND r/m16/32/64 imm16/32
+    je_jit_x86_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
+    je_jit_x86_emit_imm32(context, imm32);
     context->jit_instruction_num++;
 }
 
@@ -4493,7 +4636,7 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     for (int i = 0; i < function->param_count; i++) {
         je_ast_node_t* child = je_get_node_child(context, node, i);
         int reg1 = je_jit_x86_emit_node(context, child);
-        switch (function->parm_types[i]) {
+        switch (je_get_func_param_type(context, function, i)) {
             case JE_TYPE_INT: {
                 int addr_reg = je_jit_x86_alloc_alu_reg(context);
 #ifdef JE_ISA_X64
@@ -4562,6 +4705,11 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_ECX);
     je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EDX);
 
+    // Ensure stack is aligned.
+    je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EBP);
+    je_jit_x86_emit_mov_r64_r64(context, JE_JIT_X86_REG_EBP, JE_JIT_X86_REG_ESP);
+    je_jit_x86_emit_and_r64_imm64_sign_extended(context, JE_JIT_X86_REG_ESP, 0xFFFFFFF0);
+
     // Store the active_function pointer
     uint64_t address = (uint64_t)&context->active_function;
     je_jit_x86_emit_mov_r64_imm64(context, JE_JIT_X86_REG_ECX, address);
@@ -4577,13 +4725,22 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     je_jit_x86_emit_call(context, JE_JIT_X86_REG_EDX);
     je_jit_x86_emit_nop(context);
 
+    // Restore alignment.
+    je_jit_x86_emit_mov_r64_r64(context, JE_JIT_X86_REG_ESP, JE_JIT_X86_REG_EBP);
+    je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EBP);
+
     // Restore registers we used.
-    je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_ECX);
     je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EDX);
+    je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_ECX);
 #elif defined(JE_CALLING_CONVENTION_C)
     // Store registers we are going to use.
     je_jit_x86_emit_push_r32(context, JE_JIT_X86_REG_ECX);
     je_jit_x86_emit_push_r32(context, JE_JIT_X86_REG_EDX);
+
+    // Ensure stack is aligned.
+    je_jit_x86_emit_push_r32(context, JE_JIT_X86_REG_EBP);
+    je_jit_x86_emit_mov_r32_r32(context, JE_JIT_X86_REG_EBP, JE_JIT_X86_REG_ESP);
+    je_jit_x86_emit_and_r32_imm32(context, JE_JIT_X86_REG_ESP, 0xFFFFFFF0);
 
     // Store the active_function pointer
     uint32_t address = (uint32_t)&context->active_function;
@@ -4604,13 +4761,22 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     // Pop value off stack.
     je_jit_x86_emit_add_r32_imm32(context, JE_JIT_X86_REG_ESP, 4);
 
+    // Restore alignment.
+    je_jit_x86_emit_mov_r32_r32(context, JE_JIT_X86_REG_ESP, JE_JIT_X86_REG_EBP);
+    je_jit_x86_emit_pop_r32(context, JE_JIT_X86_REG_EBP);
+
     // Restore registers we used.
-    je_jit_x86_emit_pop_r32(context, JE_JIT_X86_REG_ECX);
     je_jit_x86_emit_pop_r32(context, JE_JIT_X86_REG_EDX);
+    je_jit_x86_emit_pop_r32(context, JE_JIT_X86_REG_ECX);
 #elif defined(JE_CALLING_CONVENTION_SYSTEMV)
     // Store registers we are going to use.
     je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_ECX);
     je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EDX);
+
+    // Ensure stack is aligned.
+    je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EBP);
+    je_jit_x86_emit_mov_r64_r64(context, JE_JIT_X86_REG_EBP, JE_JIT_X86_REG_ESP);
+    je_jit_x86_emit_and_r64_imm64_sign_extended(context, JE_JIT_X86_REG_ESP, 0xFFFFFFF0);
 
     // Store the active_function pointer
     uint64_t address = (uint64_t)&context->active_function;
@@ -4627,9 +4793,13 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     je_jit_x86_emit_call(context, JE_JIT_X86_REG_EDX);
     je_jit_x86_emit_nop(context);
 
+    // Restore alignment.
+    je_jit_x86_emit_mov_r64_r64(context, JE_JIT_X86_REG_ESP, JE_JIT_X86_REG_EBP);
+    je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EBP);
+
     // Restore registers we used.
-    je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_ECX);
     je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EDX);
+    je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_ECX);
 #else
     #error compiler-specific implementation required
 #endif
@@ -4900,7 +5070,7 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
         }
         case JE_NODE_INT_LITERAL: {
             int reg = je_jit_x86_alloc_alu_reg(context);
-            je_jit_x86_emit_mov_r32_imm32(context, reg, je_get_ast_node_value(context, node)->int_value);
+            je_jit_x86_emit_mov_r32_imm32(context, reg, *je_get_ast_node_int(context, node));
             return reg;
         }
         case JE_NODE_CAST_INT_TO_FLOAT: {
@@ -4991,7 +5161,7 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
         }
         case JE_NODE_BOOL_LITERAL: {
             int reg = je_jit_x86_alloc_alu_reg(context);
-            je_jit_x86_emit_mov_r32_imm32(context, reg, je_get_ast_node_value(context, node)->bool_value);
+            je_jit_x86_emit_mov_r32_imm32(context, reg, *je_get_ast_node_bool(context, node));
             return reg;
         }
         case JE_NODE_CAST_BOOL_TO_INT: {
@@ -5166,10 +5336,10 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
             int xmm_reg = je_jit_x86_alloc_xmm_reg(context);
 
 #ifdef JE_ISA_X64
-            uint64_t address = (uint64_t)&je_get_ast_node_value(context, node)->float_value;
+            uint64_t address = (uint64_t)je_get_ast_node_float(context, node);
             je_jit_x86_emit_mov_r64_imm64(context, alu_reg, address);
 #else
-            uint32_t address = (uint32_t)&je_get_ast_node_value(context, node)->float_value;
+            uint32_t address = (uint32_t)je_get_ast_node_float(context, node);
             je_jit_x86_emit_mov_r32_imm32(context, alu_reg, address);
 #endif
 
@@ -5222,10 +5392,10 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
         case JE_NODE_STRING_LITERAL: {
             int dst_reg = je_jit_x86_alloc_alu_reg(context);
 #ifdef JE_ISA_X64
-            uint64_t address = (uint64_t)je_get_ast_node_value(context, node)->string_value;
+            uint64_t address = (uint64_t)*je_get_ast_node_string(context, node);
             je_jit_x86_emit_mov_r64_imm64(context, dst_reg, address);
 #else
-            uint32_t address = (uint32_t)je_get_ast_node_value(context, node)->string_value;
+            uint32_t address = (uint32_t)*je_get_ast_node_string(context, node);
             je_jit_x86_emit_mov_r32_imm32(context, dst_reg, address);
 #endif
             return dst_reg;

@@ -77,12 +77,13 @@ double perf_timer_elapsed_ms(perf_timer_t* timer) {
 // Bound variables and functions
 // -----------------------------------------------------------------------
 
-const char* g_benchmark_expression = "sqr((((12 * var_float) / (32 * 2)) + 3) + 8)";
+const char* g_benchmark_expression = "sqr((((12 * var_float) / (32 * 2)) + 3) + 8, 2)";
 
 void func_sqr(je_context_t* ctx) {
-    float a;
+    float a = 0.0f, b = 0.0f;
     je_get_parameter_float(ctx, 0, &a);
-    je_return_float(ctx, a * a);
+    je_get_parameter_float(ctx, 1, &b);
+    je_return_float(ctx, (a * a) + b);
 }
 
 // -----------------------------------------------------------------------
@@ -92,7 +93,7 @@ void func_sqr(je_context_t* ctx) {
 void setup_context(je_context_t* ctx, int flags) {
     je_new_context(ctx, flags);
 
-    je_bind_function        (ctx, "sqr",        false, &func_sqr, JE_TYPE_FLOAT, JE_TYPE_FLOAT, NULL);
+    je_bind_function        (ctx, "sqr",        false, &func_sqr, JE_TYPE_FLOAT, JE_TYPE_FLOAT, JE_TYPE_FLOAT, NULL);
     je_bind_variable_int    (ctx, "var_int",    false, 123);
     je_bind_variable_bool   (ctx, "var_bool",   false, false);
     je_bind_variable_string (ctx, "var_string", false, "abc");
@@ -116,7 +117,9 @@ double run_benchmark(const char* name, int flags) {
     }
 
     {
-        const int k_iterations = 1'000'000'000;
+        const int k_iterations = 1000000;
+
+       // func_sqr(&ctx);
 
         float output_value = 0.0f;
         perf_timer_t timer;
