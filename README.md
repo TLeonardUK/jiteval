@@ -80,6 +80,7 @@ These are all platforms that have been validated. The library should work on all
 | Linux | Clang | x64 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | GCC | x64 | :heavy_check_mark: | :heavy_check_mark: |
 | Arduino | GCC | ARM | :heavy_check_mark: | :x: |
+| Arduino | GCC | ARM64 | :heavy_check_mark: | :x: |
 | Arduino | GCC | AVR | :heavy_check_mark: | :x: |
 | Arduino | GCC | Xtensa | :heavy_check_mark: | :x: |
 | All Others | - | - | :heavy_check_mark: | :x: |
