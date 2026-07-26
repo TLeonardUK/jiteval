@@ -5,6 +5,9 @@
 
 .idea/
 
+# Various extra bits and pieces
+*.map
+
 # User-specific files
 *.rsuser
 *.suo
@@ -19,6 +22,8 @@
 mono_crash.*
 
 # Build results
+[Dd]ebug_Clang/
+[Rr]elease_Clang/
 [Dd]ebug/
 [Dd]ebugPublic/
 [Rr]elease/

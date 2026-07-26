@@ -67,6 +67,8 @@ The latest released version of the header file is available on the github releas
 
 # Whats the platform support?
 
+These are all platforms that have been validated. The library should work on all others without JIT support.
+
 | Platform | Compiler | ISA | Non-JIT Support |JIT Support |
 | --- | --- | --- | --- | --- |
 | Windows | MSVC | x86 | :heavy_check_mark: | :heavy_check_mark: |
@@ -77,6 +79,9 @@ The latest released version of the header file is available on the github releas
 | Linux | GCC | x86 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | Clang | x64 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | GCC | x64 | :heavy_check_mark: | :heavy_check_mark: |
+| Arduino | GCC | ARM | :heavy_check_mark: | :x: |
+| Arduino | GCC | AVR | :heavy_check_mark: | :x: |
+| Arduino | GCC | Xtensa | :heavy_check_mark: | :x: |
 | All Others | - | - | :heavy_check_mark: | :x: |
 
 # Whats in the repository?

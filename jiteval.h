@@ -219,6 +219,92 @@ extern "C" {
 #endif
 
 // -----------------------------------------------------------------------
+// PLATFORM DETERMINATION OPTIONS
+// -----------------------------------------------------------------------
+
+// Platform determination
+#if defined(_WIN32)
+    #define JE_PLATFORM_WINDOWS
+    #define JE_PLATFORM_NAME "Windows"
+#elif defined(__linux__)
+    #define JE_PLATFORM_LINUX
+    #define JE_PLATFORM_NAME "Linux"
+#elif defined(__APPLE__)
+    #define JE_PLATFORM_MACOS
+    #define JE_PLATFORM_NAME "MacOS"
+#elif defined(ARDUINO)
+    #define JE_PLATFORM_ARDUINO
+    #define JE_PLATFORM_NAME "Arduino"
+#else
+    #error Unknown platform
+#endif
+
+// Compiler determination
+#if defined(_MSC_VER)
+    // Also captures using clang as a frontend for msvc.
+    #define JE_COMPILER_MSVC
+    #define JE_COMPILER_NAME "MSVC"
+#elif defined(__clang__)
+    #define JE_COMPILER_CLANG
+    #define JE_COMPILER_NAME "Clang"
+#elif defined(__GNUC__)
+    #define JE_COMPILER_GCC
+    #define JE_COMPILER_NAME "GCC"
+#else
+    #error Unknown compiler
+#endif
+
+// ISA determination.
+#if defined(_M_X64) || defined(__x86_64__)
+    #define JE_ISA_X64
+    #define JE_ISA_NAME "X64"
+#elif defined(_M_IX86) || defined(__i386__)
+    #define JE_ISA_X86
+    #define JE_ISA_NAME "X86"
+#elif defined(_M_ARM64) || defined(__aarch64__)
+    #define JE_ISA_ARM64
+    #define JE_ISA_NAME "ARM64
+#elif defined(_M_ARM) || defined(__arm__)
+    #define JE_ISA_ARM32
+    #define JE_ISA_NAME "ARM32"
+#elif defined(__AVR__)
+    #define JE_ISA_AVR
+    #define JE_ISA_NAME "AVR"
+#elif defined(__XTENSA__)
+    #define JE_ISA_XTENSA
+    #define JE_ISA_NAME "XTENSA"
+#else
+    #error Unknown ISA
+#endif
+
+// Only support JIT for x86/x64 under msvc/gcc/clang for the moment.
+#if defined(JE_PLATFORM_WINDOWS) || defined(JE_PLATFORM_LINUX)
+    #if defined(JE_COMPILER_MSVC) || defined(JE_COMPILER_GCC) || defined(JE_COMPILER_CLANG)
+        #if defined(JE_ISA_X64) || defined(JE_ISA_X86)
+            #define JE_JIT_AVAILABLE
+        #endif
+    #endif
+#endif
+
+#ifdef JE_JIT_AVAILABLE
+    #ifdef JE_COMPILER_MSVC
+        #ifdef JE_ISA_X64
+            #define JE_CALLING_CONVENTION_MSVC
+        #else
+            #define JE_CALLING_CONVENTION_C
+        #endif
+    #elif defined(JE_COMPILER_GCC) || defined(JE_COMPILER_CLANG)
+        #ifdef JE_ISA_X64
+            #define JE_CALLING_CONVENTION_SYSTEMV
+        #else
+            #define JE_CALLING_CONVENTION_C
+        #endif
+    #else
+        #error Unknown calling convention
+    #endif
+#endif
+
+// -----------------------------------------------------------------------
 // COMPILE TIME OPTIONS
 // -----------------------------------------------------------------------
 
@@ -242,7 +328,11 @@ extern "C" {
 // require modification, but if your platform requites specific alignment
 // for performance you can modify this.
 #ifndef JE_MEM_ARENA_ALIGN
+#ifdef JE_ISA_XTENSA
+#define JE_MEM_ARENA_ALIGN              (8)
+#else
 #define JE_MEM_ARENA_ALIGN              (1)
+#endif
 #endif
 
 // Maximum length of a constant string in an expression. This expands the
@@ -339,73 +429,10 @@ void je_memory_stats(je_context_t* context, int* permanent_mem_used, int* transi
 // -----------------------------------------------------------------------
 
 #ifdef __INTELLISENSE__
-#define JITEVAL_IMPL
+    #define JITEVAL_IMPL
 #endif
 
 #ifdef JITEVAL_IMPL
-
-// Platform determination
-#if defined(_WIN32)
-    #define JE_PLATFORM_WINDOWS
-    #define JE_PLATFORM_NAME "Windows"
-#elif defined(__linux__)
-    #define JE_PLATFORM_LINUX
-    #define JE_PLATFORM_NAME "Linux"
-#elif defined(__APPLE__)
-    #define JE_PLATFORM_MACOS
-    #define JE_PLATFORM_NAME "MacOS"
-#endif
-
-// Compiler determination
-#if defined(_MSC_VER)
-    // Also captures using clang as a frontend for msvc.
-    #define JE_COMPILER_MSVC
-    #define JE_COMPILER_NAME "MSVC"
-#elif defined(__clang__)
-    #define JE_COMPILER_CLANG
-    #define JE_COMPILER_NAME "Clang"
-#elif defined(__GNUC__)
-    #define JE_COMPILER_GCC
-    #define JE_COMPILER_NAME "GCC"
-#else
-    #error Unknown platform
-#endif
-
-// ISA determination.
-#if defined(_M_X64) || defined(__x86_64__)
-    #define JE_ISA_X64
-    #define JE_ISA_NAME "X64"
-#elif defined(_M_IX86) || defined(__i386__)
-    #define JE_ISA_X86
-    #define JE_ISA_NAME "X86"
-#endif
-
-// Only support JIT for x86/x64 under msvc/gcc/clang for the moment.
-#if defined(JE_PLATFORM_WINDOWS) || defined(JE_PLATFORM_LINUX)
-    #if defined(JE_COMPILER_MSVC) || defined(JE_COMPILER_GCC) || defined(JE_COMPILER_CLANG)
-        #if defined(JE_ISA_X64) || defined(JE_ISA_X86)
-            #define JE_JIT_AVAILABLE
-        #endif
-    #endif
-#endif
-
-#ifdef JE_JIT_AVAILABLE
-    #ifdef JE_COMPILER_MSVC
-        #ifdef JE_ISA_X64
-            #define JE_CALLING_CONVENTION_MSVC
-        #else
-            #define JE_CALLING_CONVENTION_C
-        #endif
-    #elif defined(JE_COMPILER_GCC) || defined(JE_COMPILER_CLANG)
-        #ifdef JE_ISA_X64
-            #define JE_CALLING_CONVENTION_SYSTEMV
-        #else
-            #define JE_CALLING_CONVENTION_C
-        #endif
-    #else
-        #error Unknown calling convention
-    #endif
-#endif
 
 #ifdef JE_COMPILER_MSVC
     #define _CRT_SECURE_NO_WARNINGS 1
@@ -416,18 +443,17 @@ void je_memory_stats(je_context_t* context, int* permanent_mem_used, int* transi
     #include <Windows.h>
 #endif
 
-#include <memory.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <float.h>
-#include <math.h>
-#include <stdarg.h>
+
 #include <assert.h>
+#include <math.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdarg.h>
 
 #if defined(JE_PLATFORM_LINUX)
-#include <sys/mman.h>
+    #include <sys/mman.h>
 #endif
 
 // -----------------------------------------------------------------------
@@ -440,6 +466,8 @@ void je_memory_stats(je_context_t* context, int* permanent_mem_used, int* transi
 #define JE_MAX_STRING_BIT_LENGTH        (13)
 #define JE_MAX_STRING_LENGTH            (2 ^ JE_MAX_STRING_BIT_LENGTH);
 #define JE_MAX_PARAMETERS               (8)
+
+#define JE_FLOAT_EPSILON                (0.000001f)
 
 enum je_token_type_t {
     JE_TOK_IDENTIFIER,             
@@ -623,6 +651,12 @@ typedef struct je_variable_def_t {
     // 1
     uint8_t                         type : 4;
     uint8_t                         is_constant : 4;
+
+#if JE_MEM_ARENA_ALIGN > 1
+    // Ensure variable following this is aligned.
+    uint8_t                         pad0[JE_MEM_ARENA_ALIGN - (5 % JE_MEM_ARENA_ALIGN)];
+#endif
+
     // Note: Struct is over-allocated, the value of the variable 
     //       immediately follows it. Type is used to disambiguate.
 } je_variable_def_t;
@@ -1250,6 +1284,7 @@ je_func_def_t* je_find_function(je_context_t* context, uint16_t name_index) {
 
 int je_find_or_create_function(je_context_t* context, const char* name, je_func_def_t** func) {
     uint16_t index;
+
     int ret = je_get_name_index(context, name, &index);
     if (ret < 0) {
         return ret;
@@ -1451,7 +1486,7 @@ int je_coerce_to_bool(je_context_t* context, je_value_t* value) {
         }
         case JE_TYPE_FLOAT: {
             value->type = JE_TYPE_BOOL;
-            value->bool_value = (fabs(value->float_value) > FLT_EPSILON ? 1 : 0);
+            value->bool_value = (fabs(value->float_value) > JE_FLOAT_EPSILON ? 1 : 0);
             break;
         }
         case JE_TYPE_STRING: {
@@ -2360,7 +2395,7 @@ int je_read_token(je_context_t* context, je_token_t* tok) {
                     memcpy(buffer, tok->source_ptr, len);
                     buffer[len] = '\0';
 
-                    tok->float_value = strtof(tok->source_ptr, NULL);
+                    tok->float_value = atof(tok->source_ptr);
                 }
             // Unknown
             } else {

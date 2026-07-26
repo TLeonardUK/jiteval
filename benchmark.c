@@ -32,7 +32,7 @@
 // Utility functions
 // -----------------------------------------------------------------------
 
-#ifdef JE_PLATFORM_WINDOWS
+#if defined(JE_PLATFORM_WINDOWS)
 
 typedef struct perf_timer_t {
     LARGE_INTEGER time_start;
@@ -53,7 +53,7 @@ double perf_timer_elapsed_ms(perf_timer_t* timer) {
     return duration * 1000.0f;
 }
 
-#else
+#elif defined(JE_PLATFORM_LINUX)
 
 typedef struct perf_timer_t {
     struct timespec end_time;
@@ -69,6 +69,24 @@ void perf_timer_stop(perf_timer_t* timer) {
 double perf_timer_elapsed_ms(perf_timer_t* timer) {
     long elapsed_ns = (timer->end_time.tv_sec - timer->start_time.tv_sec) * (long)1e9 + (timer->end_time.tv_nsec - timer->start_time.tv_nsec);
     return elapsed_ns / 1e6f;
+}
+
+#elif defined(JE_PLATFORM_ARDUINO)
+
+typedef struct perf_timer_t {
+    unsigned long end_time;
+    unsigned long start_time;
+} perf_timer_t;
+
+void perf_timer_start(perf_timer_t* timer) {
+    timer->start_time = micros();
+}
+void perf_timer_stop(perf_timer_t* timer) {
+    timer->end_time = micros();
+}
+double perf_timer_elapsed_ms(perf_timer_t* timer) {
+    long elapsed_ns = (timer->end_time - timer->start_time);
+    return elapsed_ns / 1000.0f;
 }
 
 #endif
@@ -106,7 +124,9 @@ double run_benchmark(const char* name, int flags) {
     printf("============== %s ==============\n", name);
 
     je_context_t ctx;
+    printf("Setting up context...\n");
     setup_context(&ctx, flags);
+    printf("Context setup, compiling...\n");
 
     {
         perf_timer_t timer;
@@ -117,9 +137,7 @@ double run_benchmark(const char* name, int flags) {
     }
 
     {
-        const int k_iterations = 1000000;
-
-       // func_sqr(&ctx);
+        const int k_iterations = 1000;
 
         float output_value = 0.0f;
         perf_timer_t timer;
@@ -146,7 +164,7 @@ double run_benchmark(const char* name, int flags) {
     return elapsed;
 }
 
-int main(int argc, char* argv[]) {
+int benchmark() {
     double interpreted_time = run_benchmark("Interpreted", JE_FLAG_NO_JIT);
 
     printf("\n");
@@ -158,3 +176,8 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
+#ifndef JE_PLATFORM_ARDUINO
+int main(int argc, char* argv[]) {
+    return benchmark();
+}
+#endif
