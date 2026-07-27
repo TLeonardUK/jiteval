@@ -176,7 +176,7 @@
 // 
 //      Strings support escaping via the standard C escape characters.
 // 
-//      Identifiers are case-sensitive.
+//      Identifiers are case-sensitive. All Identifiers beginning with __ are reserved for intrinsics.
 // 
 //      Expressions are strongly typed. 
 //
@@ -392,7 +392,8 @@ extern "C" {
 #define JE_FLAG_NO_OPTIMIZATION                     (1)     // Disables any optimization passes on the expression.
 #define JE_FLAG_NO_JIT                              (2)     // Disables jit compiling of the expression 
 #define JE_FLAG_DEBUG_LOGGING                       (4)     // Prints out the AST at different stages of compilation, among other things, used for debugging.
-#define JE_FLAG_DEBUG_MEM_LOGGING                   (5)     // Prints out memory allocations / arena states.
+#define JE_FLAG_DEBUG_MEM_LOGGING                   (8)     // Prints out memory allocations / arena states.
+#define JE_FLAG_NO_UTILITY_FUNCTIONS                (16)    // Prevents registration of the basic utility functions normally provided (min/max/abs/etc)
 
 typedef struct je_context_t je_context_t;
 typedef void (*je_func_t)(je_context_t* context);
@@ -401,7 +402,7 @@ typedef void (*je_jit_func_t)();
 int je_eval_int(const char* expression, char* error_msg, int error_msg_len);
 float je_eval_float(const char* expression, char* error_msg, int error_msg_len);
 bool je_eval_bool(const char* expression, char* error_msg, int error_msg_len);
-const char* je_eval_string(const char* expression, char* error_msg, int error_msg_len);
+char* je_eval_string(const char* expression, char* error_msg, int error_msg_len);
 
 int je_new_context(je_context_t* context, int flags);
 int je_free_context(je_context_t* context);
@@ -460,7 +461,7 @@ void je_memory_stats(je_context_t* context, int* permanent_mem_used, int* transi
 // DEFINES
 // -----------------------------------------------------------------------
 
-#define JE_MAX_OPERATOR_PRECEDENCE      (9)
+#define JE_MAX_OPERATOR_PRECEDENCE      (10)
 
 // Maximum string length that can be manipulated by the expression.
 #define JE_MAX_STRING_BIT_LENGTH        (13)
@@ -520,6 +521,7 @@ enum je_node_type_t {
     JE_NODE_NOT_EQUAL,
     JE_NODE_BITWISE_AND,
     JE_NODE_BITWISE_OR,
+    JE_NODE_BITWISE_XOR,
     JE_NODE_LOGICAL_AND,
     JE_NODE_LOGICAL_OR,
     JE_NODE_VARIABLE,
@@ -561,6 +563,7 @@ enum je_node_type_t {
     JE_NODE_NOT_EQUAL_STRING,
     JE_NODE_BITWISE_AND_INT,
     JE_NODE_BITWISE_OR_INT,
+    JE_NODE_BITWISE_XOR_INT,
     JE_NODE_LOGICAL_AND_BOOL,
     JE_NODE_LOGICAL_OR_BOOL,
     JE_NODE_VARIABLE_BOOL,
@@ -710,7 +713,7 @@ typedef struct je_context_t {
     je_value_t                      function_params[JE_MAX_PARAMETERS];     // Parameters passed into the last function called.
     je_value_t                      function_result;                        // Return value from function called
 
-    //const char*                     source;                               // Pointer to source code string
+    const char*                     source;                               // Pointer to source code string
     const char*                     read_ptr;                               // Read pointer into source string
     je_variable_def_t*              variable_head;                          // Head of the variable linked list.
     je_func_def_t*                  function_head;                          // Head of the function linked list.
@@ -790,8 +793,9 @@ const char* je_mem_tag_name(int tag) {
 void je_jit_free(je_context_t* context);
 int je_parse(je_context_t* context, je_ast_node_t** node, int precedence);
 int je_eval_slow(je_context_t* context, je_ast_node_t* node, je_value_t* result);
+void je_print_ast(je_context_t* context, je_ast_node_t* node, int depth, int childIndex);
 
-int je_store_error(je_context_t* context, int error_code, const char* error_msg, ...) {  
+int je_store_error(je_context_t* context, int error_code, const char* location, const char* error_msg, ...) {  
     if (error_msg != NULL) {
         va_list va;
         va_start(va, error_msg);
@@ -819,6 +823,23 @@ int je_store_error(je_context_t* context, int error_code, const char* error_msg,
             strncpy(context->error_msg, error_code_msg, sizeof(context->error_msg));
         }
     }
+
+    // If we have enough buffer space then append the location description.
+    if (location != NULL) {
+        int bytes_remaining = (sizeof(context->error_msg) - 1) - (int)strlen(context->error_msg);
+        int indent = (int)(location - context->source) + 1;
+        int bytes_required = 1 + (int)strlen(context->source) + 1 + indent + 1;
+        if (bytes_remaining >= bytes_required) {
+            strcat(context->error_msg, "\n");
+            strcat(context->error_msg, context->source);
+            strcat(context->error_msg, "\n");
+            for (int i = 0; i < indent; i++) {
+                strcat(context->error_msg, " ");
+            }
+            strcat(context->error_msg, "^");
+        }
+    }
+
     context->error_code = error_code;
     return error_code;
 }
@@ -830,7 +851,7 @@ int je_alloc_transient(je_context_t* context, size_t size, char** ptr, int tag) 
     }
     size_t remaining_space = JE_MEM_ARENA_SIZE - context->transient_mem_arena_offset;
     if (remaining_space < size + JE_MEM_ARENA_ALIGN) {
-        je_store_error(context, JE_RESULT_OOM, NULL);
+        je_store_error(context, JE_RESULT_OOM, NULL, NULL);
         return context->error_code;
     }
     if (context->flags & JE_FLAG_DEBUG_MEM_LOGGING) {
@@ -852,7 +873,7 @@ int je_alloc(je_context_t* context, size_t size, char** ptr, int tag) {
     }
     size_t remaining_space = JE_MEM_ARENA_SIZE - context->mem_arena_offset;
     if (remaining_space < size + JE_MEM_ARENA_ALIGN) {
-        je_store_error(context, JE_RESULT_OOM, NULL);
+        je_store_error(context, JE_RESULT_OOM, NULL, NULL);
         return context->error_code;
     }
     if (context->flags & JE_FLAG_DEBUG_MEM_LOGGING) {
@@ -920,7 +941,11 @@ je_ast_node_t* je_get_node_child(je_context_t* context, je_ast_node_t* node, int
 void je_set_node_child(je_context_t* context, je_ast_node_t* node, int index, je_ast_node_t* child) {
     uint16_t* children_offsets = (uint16_t*)(context->mem_arena + node->child_offset);
     uint16_t child_offset = (uint16_t)((char*)child - (char*)context->mem_arena);
-    children_offsets[index] = child_offset;
+    if (child == NULL) {
+        children_offsets[index] = 0;
+    } else {
+        children_offsets[index] = child_offset;
+    }
 }
 
 void je_set_func_param_type(je_context_t* context, je_func_def_t* func, int index, int type) {
@@ -1100,6 +1125,7 @@ const char* je_node_name(int type) {
         case JE_NODE_NOT_EQUAL:             return "not_equal";
         case JE_NODE_BITWISE_AND:           return "bitwise_and";
         case JE_NODE_BITWISE_OR:            return "bitwise_or";
+        case JE_NODE_BITWISE_XOR:           return "bitwise_xor";
         case JE_NODE_LOGICAL_AND:           return "logical_and";
         case JE_NODE_LOGICAL_OR:            return "logical_or";
         case JE_NODE_VARIABLE:              return "variable";
@@ -1140,6 +1166,7 @@ const char* je_node_name(int type) {
         case JE_NODE_NOT_EQUAL_STRING:      return "not_equal_string";
         case JE_NODE_BITWISE_AND_INT:       return "bitwise_and_int";
         case JE_NODE_BITWISE_OR_INT:        return "bitwise_or_int";
+        case JE_NODE_BITWISE_XOR_INT:       return "bitwise_xor_int";
         case JE_NODE_LOGICAL_AND_BOOL:      return "logical_and_bool";
         case JE_NODE_LOGICAL_OR_BOOL:       return "logical_or_bool";
         case JE_NODE_VARIABLE_BOOL:         return "variable_bool";
@@ -1202,10 +1229,10 @@ int je_find_or_create_variable(je_context_t* context, const char* name, int type
     *variable = je_find_variable(context, index);
     if (*variable != NULL) {
         if ((*variable)->type != type) {
-            return je_store_error(context, JE_RESULT_TYPE_CANNOT_CHANGE, NULL);
+            return je_store_error(context, JE_RESULT_TYPE_CANNOT_CHANGE, NULL, NULL);
         }
         if ((*variable)->is_constant) {
-            return je_store_error(context, JE_RESULT_VALUE_IS_CONSTANT, NULL);
+            return je_store_error(context, JE_RESULT_VALUE_IS_CONSTANT, NULL, NULL);
         }
         return JE_RESULT_SUCCESS;
     }
@@ -1292,7 +1319,7 @@ int je_find_or_create_function(je_context_t* context, const char* name, je_func_
     *func = je_find_function(context, index);
     if (*func != NULL) {
         if ((*func)->is_deterministic) {
-            return je_store_error(context, JE_RESULT_VALUE_IS_CONSTANT, NULL);
+            return je_store_error(context, JE_RESULT_VALUE_IS_CONSTANT, NULL, NULL);
         }
         return JE_RESULT_SUCCESS;
     }
@@ -1406,7 +1433,7 @@ int je_coerce_to_int(je_context_t* context, je_value_t* value) {
             break;
         }
         default: {
-            return je_store_error(context, JE_RESULT_CORRUPT, NULL);
+            return je_store_error(context, JE_RESULT_CORRUPT, NULL, NULL);
         }
     }
     return JE_RESULT_SUCCESS;
@@ -1434,7 +1461,7 @@ int je_coerce_to_float(je_context_t* context, je_value_t* value) {
             break;
         }
         default: {
-            return je_store_error(context, JE_RESULT_CORRUPT, NULL);
+            return je_store_error(context, JE_RESULT_CORRUPT, NULL, NULL);
         }
     }
     return JE_RESULT_SUCCESS;
@@ -1461,7 +1488,7 @@ int je_coerce_to_string(je_context_t* context, je_value_t* value) {
             return JE_RESULT_SUCCESS;
         }
         default: {
-            return je_store_error(context, JE_RESULT_CORRUPT, NULL);
+            return je_store_error(context, JE_RESULT_CORRUPT, NULL, NULL);
         }
     }
 
@@ -1495,7 +1522,7 @@ int je_coerce_to_bool(je_context_t* context, je_value_t* value) {
             break;
         }
         default: {
-            return je_store_error(context, JE_RESULT_CORRUPT, NULL);
+            return je_store_error(context, JE_RESULT_CORRUPT, NULL, NULL);
         }
     }
     return JE_RESULT_SUCCESS;
@@ -1571,7 +1598,7 @@ void je_intrinsic_string_to_float(je_context_t* ctx) {
 void je_intrinsic_string_to_bool(je_context_t* ctx) {
     const char* value;
     je_get_parameter_string(ctx, 0, &value);
-    je_return_bool(ctx, strcmp(value, "false") != 0 && strcmp(value, "0") != 0);
+    je_return_bool(ctx, strcmp(value, "") != 0 && strcmp(value, "false") != 0 && strcmp(value, "0") != 0);
 }
 
 void je_intrinsic_string_concat(je_context_t* ctx) {
@@ -1586,7 +1613,7 @@ void je_intrinsic_string_concat(je_context_t* ctx) {
 
     char* buffer;
     int ret = je_alloc_transient(ctx, size, &buffer, JE_MEM_TAG_STRING);
-    if (ret == JE_RESULT_SUCCESS) {
+    if (ret != JE_RESULT_SUCCESS) {
         assert(false);
     }
 
@@ -1611,6 +1638,46 @@ void je_intrinsic_string_not_equal(je_context_t* ctx) {
     je_get_parameter_string(ctx, 0, &a);
     je_get_parameter_string(ctx, 1, &b);
     je_return_bool(ctx, strcmp(a, b) != 0);
+}
+
+void je_intrinsic_floor(je_context_t* ctx) {
+    float a;
+    je_get_parameter_float(ctx, 0, &a);
+    je_return_float(ctx, (float)floor(a));
+}
+
+void je_intrinsic_ceil(je_context_t* ctx) {
+    float a;
+    je_get_parameter_float(ctx, 0, &a);
+    je_return_float(ctx, (float)ceil(a));
+}
+
+void je_intrinsic_round(je_context_t* ctx) {
+    float a;
+    je_get_parameter_float(ctx, 0, &a);
+    je_return_float(ctx, (float)round(a));
+}
+
+void je_intrinsic_min(je_context_t* ctx) {
+    float a;
+    float b;
+    je_get_parameter_float(ctx, 0, &a);
+    je_get_parameter_float(ctx, 1, &b);
+    je_return_float(ctx, min(a, b));
+}
+
+void je_intrinsic_max(je_context_t* ctx) {
+    float a;
+    float b;
+    je_get_parameter_float(ctx, 0, &a);
+    je_get_parameter_float(ctx, 1, &b);
+    je_return_float(ctx, max(a, b));
+}
+
+void je_intrinsic_abs(je_context_t* ctx) {
+    float a;
+    je_get_parameter_float(ctx, 0, &a);
+    je_return_float(ctx, a < 0.0f ? -a : a);
 }
 
 int je_eval_int(const char* expression, char* error_msg, int error_msg_len) {
@@ -1742,7 +1809,7 @@ bool je_eval_bool(const char* expression, char* error_msg, int error_msg_len) {
     return result;
 }
 
-const char* je_eval_string(const char* expression, char* error_msg, int error_msg_len) {
+char* je_eval_string(const char* expression, char* error_msg, int error_msg_len) {
     je_context_t ctx;
     int ret = je_new_context(&ctx, JE_FLAG_NONE);
     if (ret < 0) {
@@ -1807,15 +1874,29 @@ int je_new_context(je_context_t* context, int flags) {
     context->transient_mem_arena_offset = 1;
 
     // Register all intrinsic functions.
-    je_bind_function(context, "__int_to_string",    true, &je_intrinsic_int_to_string,     JE_TYPE_STRING,     JE_TYPE_INT,        NULL);
-    je_bind_function(context, "__float_to_string",  true, &je_intrinsic_float_to_string,   JE_TYPE_STRING,     JE_TYPE_FLOAT,      NULL);
-    je_bind_function(context, "__bool_to_string",   true, &je_intrinsic_bool_to_string,    JE_TYPE_STRING,     JE_TYPE_BOOL,       NULL);
-    je_bind_function(context, "__string_to_int",    true, &je_intrinsic_string_to_int,     JE_TYPE_INT,        JE_TYPE_STRING,     NULL);
-    je_bind_function(context, "__string_to_float",  true, &je_intrinsic_string_to_float,   JE_TYPE_FLOAT,      JE_TYPE_STRING,     NULL);
-    je_bind_function(context, "__string_to_bool",   true, &je_intrinsic_string_to_bool,    JE_TYPE_BOOL,       JE_TYPE_STRING,     NULL);
-    je_bind_function(context, "__string_concat",    true, &je_intrinsic_string_concat,     JE_TYPE_STRING,     JE_TYPE_STRING,     JE_TYPE_STRING,     NULL);
-    je_bind_function(context, "__string_equal",     true, &je_intrinsic_string_equal,      JE_TYPE_BOOL,       JE_TYPE_STRING,     JE_TYPE_STRING,     NULL);
-    je_bind_function(context, "__string_not_equal", true, &je_intrinsic_string_not_equal,  JE_TYPE_BOOL,       JE_TYPE_STRING,     JE_TYPE_STRING,     NULL);
+    je_bind_function(context, "__int_to_string",    true, &je_intrinsic_int_to_string,      JE_TYPE_STRING,     JE_TYPE_INT,        NULL);
+    je_bind_function(context, "__float_to_string",  true, &je_intrinsic_float_to_string,    JE_TYPE_STRING,     JE_TYPE_FLOAT,      NULL);
+    je_bind_function(context, "__bool_to_string",   true, &je_intrinsic_bool_to_string,     JE_TYPE_STRING,     JE_TYPE_BOOL,       NULL);
+    je_bind_function(context, "__string_to_int",    true, &je_intrinsic_string_to_int,      JE_TYPE_INT,        JE_TYPE_STRING,     NULL);
+    je_bind_function(context, "__string_to_float",  true, &je_intrinsic_string_to_float,    JE_TYPE_FLOAT,      JE_TYPE_STRING,     NULL);
+    je_bind_function(context, "__string_to_bool",   true, &je_intrinsic_string_to_bool,     JE_TYPE_BOOL,       JE_TYPE_STRING,     NULL);
+    je_bind_function(context, "__string_concat",    true, &je_intrinsic_string_concat,      JE_TYPE_STRING,     JE_TYPE_STRING,     JE_TYPE_STRING,     NULL);
+    je_bind_function(context, "__string_equal",     true, &je_intrinsic_string_equal,       JE_TYPE_BOOL,       JE_TYPE_STRING,     JE_TYPE_STRING,     NULL);
+    je_bind_function(context, "__string_not_equal", true, &je_intrinsic_string_not_equal,   JE_TYPE_BOOL,       JE_TYPE_STRING,     JE_TYPE_STRING,     NULL);
+
+    // Basic utility functions
+    if ((flags & JE_FLAG_NO_UTILITY_FUNCTIONS) == 0) {
+
+        je_bind_function(context, "floor",          true, &je_intrinsic_floor,              JE_TYPE_FLOAT,      JE_TYPE_FLOAT,      NULL);
+        je_bind_function(context, "ceil",           true, &je_intrinsic_ceil,               JE_TYPE_FLOAT,      JE_TYPE_FLOAT,      NULL);
+        je_bind_function(context, "round",          true, &je_intrinsic_round,              JE_TYPE_FLOAT,      JE_TYPE_FLOAT,      NULL);
+        je_bind_function(context, "min",            true, &je_intrinsic_min,                JE_TYPE_FLOAT,      JE_TYPE_FLOAT,      JE_TYPE_FLOAT,      NULL);
+        je_bind_function(context, "max",            true, &je_intrinsic_max,                JE_TYPE_FLOAT,      JE_TYPE_FLOAT,      JE_TYPE_FLOAT,      NULL);
+        je_bind_function(context, "abs",            true, &je_intrinsic_abs,                JE_TYPE_FLOAT,      JE_TYPE_FLOAT,      NULL);
+
+        je_bind_variable_float(context, "PI",       true, 3.14159265f);
+
+    }
 
     return JE_RESULT_SUCCESS;
 }
@@ -1966,13 +2047,13 @@ int je_bind_function(je_context_t* context, const char* name, bool is_determinis
 
 int je_get_parameter_int(je_context_t* context, int index, int* result) {
     if (context->active_function == NULL) {
-        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL);
+        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL, NULL);
     }
     if (index >= context->active_function->param_count) {
-        return je_store_error(context, JE_RESULT_PARAMETER_INDEX_OUT_OF_BOUNDS, NULL);
+        return je_store_error(context, JE_RESULT_PARAMETER_INDEX_OUT_OF_BOUNDS, NULL, NULL);
     }
     if (je_get_func_param_type(context, context->active_function, index) != JE_TYPE_INT) {
-        return je_store_error(context, JE_RESULT_WRONG_PARAMETER_TYPE, NULL);
+        return je_store_error(context, JE_RESULT_WRONG_PARAMETER_TYPE, NULL, NULL);
     }
 
     *result = context->function_params[index].int_value;
@@ -1982,13 +2063,13 @@ int je_get_parameter_int(je_context_t* context, int index, int* result) {
 
 int je_get_parameter_float(je_context_t* context, int index, float* result) {
     if (context->active_function == NULL) {
-        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL);
+        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL, NULL);
     }
     if (index >= context->active_function->param_count) {
-        return je_store_error(context, JE_RESULT_PARAMETER_INDEX_OUT_OF_BOUNDS, NULL);
+        return je_store_error(context, JE_RESULT_PARAMETER_INDEX_OUT_OF_BOUNDS, NULL, NULL);
     }
     if (je_get_func_param_type(context, context->active_function, index) != JE_TYPE_FLOAT) {
-        return je_store_error(context, JE_RESULT_WRONG_PARAMETER_TYPE, NULL);
+        return je_store_error(context, JE_RESULT_WRONG_PARAMETER_TYPE, NULL, NULL);
     }
 
     *result = context->function_params[index].float_value;
@@ -1998,13 +2079,13 @@ int je_get_parameter_float(je_context_t* context, int index, float* result) {
 
 int je_get_parameter_bool(je_context_t* context, int index, int* result) {
     if (context->active_function == NULL) {
-        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL);
+        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL, NULL);
     }
     if (index >= context->active_function->param_count) {
-        return je_store_error(context, JE_RESULT_PARAMETER_INDEX_OUT_OF_BOUNDS, NULL);
+        return je_store_error(context, JE_RESULT_PARAMETER_INDEX_OUT_OF_BOUNDS, NULL, NULL);
     }
     if (je_get_func_param_type(context, context->active_function, index) != JE_TYPE_BOOL) {
-        return je_store_error(context, JE_RESULT_WRONG_PARAMETER_TYPE, NULL);
+        return je_store_error(context, JE_RESULT_WRONG_PARAMETER_TYPE, NULL, NULL);
     }
 
     *result = context->function_params[index].int_value;
@@ -2014,13 +2095,13 @@ int je_get_parameter_bool(je_context_t* context, int index, int* result) {
 
 int je_get_parameter_string(je_context_t* context, int index, const char** result) {
     if (context->active_function == NULL) {
-        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL);
+        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL, NULL);
     }
     if (index >= context->active_function->param_count) {
-        return je_store_error(context, JE_RESULT_PARAMETER_INDEX_OUT_OF_BOUNDS, NULL);
+        return je_store_error(context, JE_RESULT_PARAMETER_INDEX_OUT_OF_BOUNDS, NULL, NULL);
     }
     if (je_get_func_param_type(context, context->active_function, index) != JE_TYPE_STRING) {
-        return je_store_error(context, JE_RESULT_WRONG_PARAMETER_TYPE, NULL);
+        return je_store_error(context, JE_RESULT_WRONG_PARAMETER_TYPE, NULL, NULL);
     }
 
     *result = context->function_params[index].string_value;
@@ -2030,10 +2111,10 @@ int je_get_parameter_string(je_context_t* context, int index, const char** resul
 
 int je_return_int(je_context_t* context, int result) {
     if (context->active_function == NULL) {
-        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL);
+        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL, NULL);
     }
     if (context->active_function->return_type != JE_TYPE_INT) {
-        return je_store_error(context, JE_RESULT_INCORRECT_FUNC_RETURN_TYPE, NULL);
+        return je_store_error(context, JE_RESULT_INCORRECT_FUNC_RETURN_TYPE, NULL, NULL);
     }
 
     context->function_result.type = JE_TYPE_INT;
@@ -2044,10 +2125,10 @@ int je_return_int(je_context_t* context, int result) {
 
 int je_return_float(je_context_t* context, float result) {
     if (context->active_function == NULL) {
-        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL);
+        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL, NULL);
     }
     if (context->active_function->return_type != JE_TYPE_FLOAT) {
-        return je_store_error(context, JE_RESULT_INCORRECT_FUNC_RETURN_TYPE, NULL);
+        return je_store_error(context, JE_RESULT_INCORRECT_FUNC_RETURN_TYPE, NULL, NULL);
     }
 
     context->function_result.type = JE_TYPE_FLOAT;
@@ -2058,10 +2139,10 @@ int je_return_float(je_context_t* context, float result) {
 
 int je_return_bool(je_context_t* context, int result) {
     if (context->active_function == NULL) {
-        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL);
+        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL, NULL);
     }
     if (context->active_function->return_type != JE_TYPE_BOOL) {
-        return je_store_error(context, JE_RESULT_INCORRECT_FUNC_RETURN_TYPE, NULL);
+        return je_store_error(context, JE_RESULT_INCORRECT_FUNC_RETURN_TYPE, NULL, NULL);
     }
 
     context->function_result.type = JE_TYPE_BOOL;
@@ -2072,10 +2153,10 @@ int je_return_bool(je_context_t* context, int result) {
 
 int je_return_string(je_context_t* context, const char* result) {
     if (context->active_function == NULL) {
-        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL);
+        return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL, NULL);
     }
     if (context->active_function->return_type != JE_TYPE_STRING) {
-        return je_store_error(context, JE_RESULT_INCORRECT_FUNC_RETURN_TYPE, NULL);
+        return je_store_error(context, JE_RESULT_INCORRECT_FUNC_RETURN_TYPE, NULL, NULL);
     }
 
     context->function_result.type = JE_TYPE_STRING;
@@ -2177,7 +2258,7 @@ int je_read_token(je_context_t* context, je_token_t* tok) {
                 tok->source_len++;
                 context->read_ptr++;
             } else {
-                return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, "Encountered unexpected character '%c'\n\t%s", c, tok->source_ptr);
+                return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, tok->source_ptr, "Encountered unexpected character '%c'", c);
             }
             break;
         }
@@ -2247,7 +2328,7 @@ int je_read_token(je_context_t* context, je_token_t* tok) {
                 context->read_ptr++;
 
                 if (c == '\0') {
-                    return je_store_error(context, JE_RESULT_UNEXPECTED_UNTERMINATED_STRING, "Unterminated string\n\t%s", tok->source_ptr);
+                    return je_store_error(context, JE_RESULT_UNEXPECTED_UNTERMINATED_STRING, tok->source_ptr, "Unterminated string");
                 } else if (c == '"') {
                     break;
                 } else if (c == '\\') {
@@ -2267,7 +2348,7 @@ int je_read_token(je_context_t* context, je_token_t* tok) {
                         case '\?':  string_buffer[len++] = '?';  break;
                         // TODO: Maybe support hex/octal/unicode values here?
                         default: {
-                            return je_store_error(context, JE_RESULT_UNEXPECTED_ESCAPE_SEQUENCE, "Found unexpected escape sequence '%c'\n\t%s", escape_c, tok->source_ptr);
+                            return je_store_error(context, JE_RESULT_UNEXPECTED_ESCAPE_SEQUENCE, tok->source_ptr, "Found unexpected escape sequence '%c'", escape_c);
                         }
                     }
                 } else {
@@ -2332,15 +2413,15 @@ int je_read_token(je_context_t* context, je_token_t* tok) {
                         // Just consume these
                     } else if (c == '.') {
                         if (tok->type == JE_TOK_FLOAT) {
-                            return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, "Floating point values cannot contain multiple radix's\n\t%s", tok->source_ptr);
+                            return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, tok->source_ptr, "Floating point values cannot contain multiple radix's");
                         }
                         tok->type = JE_TOK_FLOAT;
                     } else if (c == 'e') {
                         if (found_hex) {
-                            return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, "Exponent values cannot have a hex prefix.\n\t%s", tok->source_ptr);
+                            return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, tok->source_ptr, "Exponent values cannot have a hex prefix");
                         }
                         if (found_exponent) {
-                            return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, "Number values cannot contain multiple exponent values\n\t%s", tok->source_ptr);
+                            return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, tok->source_ptr, "Number values cannot contain multiple exponent values");
                         }
                         found_exponent = 1;
                         tok->type = JE_TOK_FLOAT;
@@ -2356,13 +2437,13 @@ int je_read_token(je_context_t* context, je_token_t* tok) {
                     } else if (c == 'x' || c == 'X') {
                         tok->type = JE_TOK_INT;
                         if (found_exponent) {
-                            return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, "Exponent values cannot have a hex prefix.\n\t%s", tok->source_ptr);
+                            return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, tok->source_ptr, "Exponent values cannot have a hex prefix");
                         }
                         if (found_hex) {
-                            return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, "Number values cannot contain multiple hex prefixes\n\t%s", tok->source_ptr);
+                            return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, tok->source_ptr, "Number values cannot contain multiple hex prefixes");
                         }
                         if (tok->source_ptr[0] != '0' || tok->source_len != 1) {
-                            return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, "Invalid hex prefix in number\n\t%s", tok->source_ptr);
+                            return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, tok->source_ptr, "Invalid hex prefix in number");
                         }
                         found_hex = 1;
                     } else {
@@ -2376,7 +2457,7 @@ int je_read_token(je_context_t* context, je_token_t* tok) {
                     char buffer[32];
                     size_t len = context->read_ptr - tok->source_ptr;
                     if (len >= sizeof(buffer) - 1) {
-                        return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, "Number value too long to parse.\n\t%s", tok->source_ptr);
+                        return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, tok->source_ptr, "Number value too long to parse");
                     }
                     memcpy(buffer, tok->source_ptr, len);
                     buffer[len] = '\0';
@@ -2390,16 +2471,16 @@ int je_read_token(je_context_t* context, je_token_t* tok) {
                     char buffer[32];
                     size_t len = context->read_ptr - tok->source_ptr;
                     if (len >= sizeof(buffer) - 1) {
-                        return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, "Number value too long to parse.\n\t%s", tok->source_ptr);
+                        return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, tok->source_ptr, "Number value too long to parse");
                     }
                     memcpy(buffer, tok->source_ptr, len);
                     buffer[len] = '\0';
 
-                    tok->float_value = atof(tok->source_ptr);
+                    tok->float_value = (float)atof(buffer);
                 }
             // Unknown
             } else {
-                return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, "Encountered unexpected character '%c'\n\t%s", c, tok->source_ptr);
+                return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, tok->source_ptr, "Encountered unexpected character '%c'");
             }
         }
     }
@@ -2417,13 +2498,13 @@ int je_peek_token(je_context_t* context, je_token_t* tok) {
 int je_expect_token(je_context_t* context, je_token_t* tok, int type) {
     int ret = je_read_token(context, tok);
     if (ret == JE_RESULT_EOF) {
-        return je_store_error(context, JE_RESULT_UNEXPECTED_EOF, "Unexpected end of token stream, expecting '%s'", je_token_name(type));
+        return je_store_error(context, JE_RESULT_UNEXPECTED_EOF, NULL, "Unexpected end of token stream, expecting '%s'", je_token_name(type));
     }
     else if (ret < 0) {
         return ret;
     }
     if (tok->type != type) {
-        return je_store_error(context, JE_RESULT_UNEXPECTED_TOKEN, "Unexpected token '%s', expecting '%s'\n\t%s", je_token_name(tok->type), je_token_name(type), tok->source_ptr);
+        return je_store_error(context, JE_RESULT_UNEXPECTED_TOKEN, tok->source_ptr, "Unexpected token '%s', expecting '%s'", je_token_name(tok->type), je_token_name(type));
     }
     return JE_RESULT_SUCCESS;
 }
@@ -2437,7 +2518,7 @@ int je_parse_term(je_context_t* context, je_ast_node_t** node) {
     je_token_t tok;
     int ret = je_read_token(context, &tok);
     if (ret == JE_RESULT_EOF) {
-        return je_store_error(context, JE_RESULT_UNEXPECTED_EOF, "Unexpected end of token stream.");
+        return je_store_error(context, JE_RESULT_UNEXPECTED_EOF, NULL, "Unexpected end of token stream.");
     }
     else if (ret < 0) {
         return ret;
@@ -2484,7 +2565,7 @@ int je_parse_term(je_context_t* context, je_ast_node_t** node) {
             // Copy name into memory.
             char buffer[64];
             if (tok.source_len >= sizeof(buffer) - 1) {
-                return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, "Identifier too long to parse.\n\t%s", tok.source_ptr);
+                return je_store_error(context, JE_RESULT_UNEXPECTED_CHARACTER, tok.source_ptr, "Identifier too long to parse");
             }
             memcpy(buffer, tok.source_ptr, tok.source_len);
             buffer[tok.source_len] = '\0';
@@ -2526,7 +2607,7 @@ int je_parse_term(je_context_t* context, je_ast_node_t** node) {
                     }
 
                     if ((*node)->param_count >= JE_MAX_PARAMETERS) {
-                        return je_store_error(context, JE_RESULT_MAX_PARAMETER_COUNT_EXCEEDED, "Function call '%s' exceeded max number of parameters (%i)\n\t%s", je_get_name(context, name_index), JE_MAX_PARAMETERS, tok.source_ptr);
+                        return je_store_error(context, JE_RESULT_MAX_PARAMETER_COUNT_EXCEEDED, tok.source_ptr, "Function call '%s' exceeded max number of parameters (%i)", je_get_name(context, name_index), JE_MAX_PARAMETERS);
                     }
 
                     ret = je_parse(context, &children[(*node)->param_count++], JE_MAX_OPERATOR_PRECEDENCE);
@@ -2598,7 +2679,7 @@ int je_parse_term(je_context_t* context, je_ast_node_t** node) {
             break;
         }
         default: {
-            return je_store_error(context, JE_RESULT_UNKNOWN_TERM, "Unexpected term\n\t%s", tok.source_ptr);
+            return je_store_error(context, JE_RESULT_UNKNOWN_TERM, tok.source_ptr, "Unexpected term");
         }
     }
 
@@ -2700,7 +2781,7 @@ int je_parse(je_context_t* context, je_ast_node_t** node, int precedence) {
             } else if (tok.type == JE_TOK_OP_KEYWORD_STRING) {
                 nodeType = JE_NODE_CAST_TO_STRING;
             } else {
-                return je_store_error(context, JE_RESULT_UNEXPECTED_TOKEN, "Unexpected token, expected bool, int, float or string keyword\n\t%s", tok.source_ptr);
+                return je_store_error(context, JE_RESULT_UNEXPECTED_TOKEN, tok.source_ptr, "Unexpected token, expected bool, int, float or string keyword");
             }
 
             ret = je_expect_token(context, &tok, JE_TOK_OP_PARENTHESIS_CLOSE);
@@ -2743,15 +2824,19 @@ int je_parse(je_context_t* context, je_ast_node_t** node, int precedence) {
             nodeType = JE_NODE_BITWISE_AND;
         }
         // Precedence 7
-        else if (tok.type == JE_TOK_OP_BITWISE_OR && precedence == 7) {
+        else if (tok.type == JE_TOK_OP_BITWISE_XOR && precedence == 7) {
+            nodeType = JE_NODE_BITWISE_XOR;
+        }
+        // Precedence 7
+        else if (tok.type == JE_TOK_OP_BITWISE_OR && precedence == 8) {
             nodeType = JE_NODE_BITWISE_OR;
         }
         // Precedence 8
-        else if (tok.type == JE_TOK_OP_LOGICAL_AND && precedence == 8) {
+        else if (tok.type == JE_TOK_OP_LOGICAL_AND && precedence == 9) {
             nodeType = JE_NODE_LOGICAL_AND;
         }
         // Precedence 9
-        else if (tok.type == JE_TOK_OP_LOGICAL_OR && precedence == 9) {
+        else if (tok.type == JE_TOK_OP_LOGICAL_OR && precedence == 10) {
             nodeType = JE_NODE_LOGICAL_OR;
         }
         // Not relevant op for this precedence 
@@ -2870,7 +2955,7 @@ int je_implicit_conversion_child(je_context_t* context, je_ast_node_t* child, je
     switch (to_type) {
         case JE_TYPE_STRING: {
             if (child->return_type != JE_TYPE_STRING) {
-                return je_store_error(context, JE_RESULT_CANNOT_IMPLICITLY_CAST, "Cannot implicitly cast from '%s' to '%s'.", je_type_name(child->return_type), je_type_name(to_type));
+                return je_store_error(context, JE_RESULT_CANNOT_IMPLICITLY_CAST, NULL, "Cannot implicitly cast from '%s' to '%s'.", je_type_name(child->return_type), je_type_name(to_type));
             }
             break;
         }
@@ -2882,7 +2967,7 @@ int je_implicit_conversion_child(je_context_t* context, je_ast_node_t* child, je
                         return ret;
                     }
                 } else {
-                    return je_store_error(context, JE_RESULT_CANNOT_IMPLICITLY_CAST, "Cannot implicitly cast from '%s' to '%s'.", je_type_name(child->return_type), je_type_name(to_type));
+                    return je_store_error(context, JE_RESULT_CANNOT_IMPLICITLY_CAST, NULL, "Cannot implicitly cast from '%s' to '%s'.", je_type_name(child->return_type), je_type_name(to_type));
                 }
             }
             break;
@@ -2895,7 +2980,7 @@ int je_implicit_conversion_child(je_context_t* context, je_ast_node_t* child, je
                         return ret;
                     }
                 } else {
-                    return je_store_error(context, JE_RESULT_CANNOT_IMPLICITLY_CAST, "Cannot implicitly cast from '%s' to '%s'.", je_type_name(child->return_type), je_type_name(to_type));
+                    return je_store_error(context, JE_RESULT_CANNOT_IMPLICITLY_CAST, NULL, "Cannot implicitly cast from '%s' to '%s'.", je_type_name(child->return_type), je_type_name(to_type));
                 }
             }
             break;
@@ -2990,7 +3075,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             int name_index = je_get_ast_node_name_index(context, node);
             je_variable_def_t* variable = je_find_variable(context, name_index);
             if (variable == NULL) {
-                return je_store_error(context, JE_RESULT_UNDEFINED_IDENTIFIER, "Undefined identifier '%s'", je_get_name(context, name_index));
+                return je_store_error(context, JE_RESULT_UNDEFINED_IDENTIFIER, NULL, "Undefined identifier '%s'", je_get_name(context, name_index));
             }
             ret = je_set_ast_node_variable(context, node, variable);
             if (ret < 0) {
@@ -3009,10 +3094,10 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             int name_index = je_get_ast_node_name_index(context, node);
             je_func_def_t* function = je_find_function(context, name_index);
             if (function == NULL) {
-                return je_store_error(context, JE_RESULT_UNDEFINED_IDENTIFIER, "Undefined identifier '%s'", je_get_name(context, name_index));
+                return je_store_error(context, JE_RESULT_UNDEFINED_IDENTIFIER, NULL, "Undefined identifier '%s'", je_get_name(context, name_index));
             }
             if (function->param_count != node->param_count) {
-                return je_store_error(context, JE_RESULT_INCORRECT_PARAMETER_COUNT, "Incorrect number of parameters for function '%s'", je_get_name(context, name_index));
+                return je_store_error(context, JE_RESULT_INCORRECT_PARAMETER_COUNT, NULL, "Incorrect number of parameters for function '%s'", je_get_name(context, name_index));
             }
             ret = je_set_ast_node_function(context, node, function);
             if (ret < 0) {
@@ -3198,7 +3283,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             } else if (node->return_type == JE_TYPE_INT) {
                 node->type = JE_NODE_POS_INT;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "unary + can only be used with float or int types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "unary + can only be used with float or int types");
             }
             break;
         }
@@ -3208,7 +3293,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             } else if (node->return_type == JE_TYPE_INT) {
                 node->type = JE_NODE_NEG_INT;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "unary - can only be used with float or int types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "unary - can only be used with float or int types");
             }
             break;
         }
@@ -3218,7 +3303,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             } else if (node->return_type == JE_TYPE_INT) {
                 node->type = JE_NODE_SUB_INT;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "- can only be used with float or int types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "- can only be used with float or int types");
             }
             break;
         }
@@ -3228,7 +3313,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             } else if (node->return_type == JE_TYPE_INT) {
                 node->type = JE_NODE_MUL_INT;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "* can only be used with float or int types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "* can only be used with float or int types");
             }
             break;
         }
@@ -3240,7 +3325,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             } else if (node->return_type == JE_TYPE_STRING) {
                 node->type = JE_NODE_ADD_STRING;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "+ can only be used with float, int or string types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "+ can only be used with float, int or string types");
             }
             break;
         }
@@ -3250,7 +3335,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             } else if (node->return_type == JE_TYPE_INT) {
                 node->type = JE_NODE_DIV_INT;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "/ can only be used with float or int types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "/ can only be used with float or int types");
             }
             break;
         }
@@ -3258,7 +3343,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             if (node->return_type == JE_TYPE_INT) {
                 node->type = JE_NODE_MOD_INT;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "% can only be used with int types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "% can only be used with int types");
             }
             break;
         }
@@ -3266,7 +3351,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             if (node->return_type == JE_TYPE_INT) {
                 node->type = JE_NODE_BITWISE_NOT_INT;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "~ can only be used with int types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "~ can only be used with int types");
             }
             break;
         }
@@ -3276,7 +3361,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             } else if (node->return_type == JE_TYPE_INT) {
                 node->type = JE_NODE_LESS_INT;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "< can only be used with bool types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "< can only be used with bool types");
             }
             node->return_type = JE_TYPE_BOOL;
             break;
@@ -3287,7 +3372,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             } else if (node->return_type == JE_TYPE_INT) {
                 node->type = JE_NODE_GREATER_INT;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, ">= can only be used with bool types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, ">= can only be used with bool types");
             }
             node->return_type = JE_TYPE_BOOL;
             break;
@@ -3298,7 +3383,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             } else if (node->return_type == JE_TYPE_INT) {
                 node->type = JE_NODE_GE_INT;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, ">= can only be used with bool types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, ">= can only be used with bool types");
             }
             node->return_type = JE_TYPE_BOOL;
             break;
@@ -3309,7 +3394,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             } else if (node->return_type == JE_TYPE_INT) {
                 node->type = JE_NODE_LE_INT;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "<= can only be used with bool types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "<= can only be used with bool types");
             }
             node->return_type = JE_TYPE_BOOL;
             break;
@@ -3324,7 +3409,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             } else if (node->return_type == JE_TYPE_BOOL) {
                 node->type = JE_NODE_NOT_EQUAL_BOOL;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "!= can only be used with bool types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "!= can only be used with bool types");
             }
             node->return_type = JE_TYPE_BOOL;
             break;
@@ -3339,7 +3424,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             } else if (node->return_type == JE_TYPE_BOOL) {
                 node->type = JE_NODE_EQUAL_BOOL;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "!= can only be used with bool types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "!= can only be used with bool types");
             }
             node->return_type = JE_TYPE_BOOL;
             break;
@@ -3348,7 +3433,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             if (node->return_type == JE_TYPE_INT) {
                 node->type = JE_NODE_BITWISE_AND_INT;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "& can only be used with int types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "& can only be used with int types");
             }
             break;
         }
@@ -3356,7 +3441,16 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             if (node->return_type == JE_TYPE_INT) {
                 node->type = JE_NODE_BITWISE_OR_INT;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "| can only be used with int types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "| can only be used with int types");
+            }
+            break;
+        }
+        case JE_NODE_BITWISE_XOR: {
+            if (node->return_type == JE_TYPE_INT) {
+                node->type = JE_NODE_BITWISE_XOR_INT;
+            }
+            else {
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "^ can only be used with int types");
             }
             break;
         }
@@ -3364,7 +3458,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             if (node->return_type == JE_TYPE_BOOL) {
                 node->type = JE_NODE_LOGICAL_NOT_BOOL;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "! can only be used with bool types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "! can only be used with bool types");
             }
             break;
         }
@@ -3372,7 +3466,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             if (node->return_type == JE_TYPE_BOOL) {
                 node->type = JE_NODE_LOGICAL_AND_BOOL;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "&& can only be used with int types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "&& can only be used with int types");
             }
             break;
         }
@@ -3380,7 +3474,7 @@ int je_semant(je_context_t* context, je_ast_node_t* node, je_ast_node_t* parent,
             if (node->return_type == JE_TYPE_BOOL) {
                 node->type = JE_NODE_LOGICAL_OR_BOOL;
             } else {
-                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, "|| can only be used with int types");
+                return je_store_error(context, JE_RESULT_INCOMPATIBLE_TYPES, NULL, "|| can only be used with int types");
             }
             break;
         }
@@ -3659,6 +3753,11 @@ int je_eval_slow(je_context_t* context, je_ast_node_t* node, je_value_t* result)
             result->int_value = values[0].int_value | values[1].int_value;
             break;
         }
+        case JE_NODE_BITWISE_XOR_INT: {
+            result->type = JE_TYPE_INT;
+            result->int_value = values[0].int_value ^ values[1].int_value;
+            break;
+        }
         case JE_NODE_LOGICAL_AND_BOOL: {
             result->type = JE_TYPE_BOOL;
             result->bool_value = values[0].bool_value && values[1].bool_value;
@@ -3772,7 +3871,7 @@ int je_eval_slow(je_context_t* context, je_ast_node_t* node, je_value_t* result)
             context->active_function->function(context);
 
             if (context->function_result.type != context->active_function->return_type) {
-                return je_store_error(context, JE_RESULT_INCORRECT_FUNC_RETURN_TYPE, "Call to function returned incorrect type '%s' expecting '%s'.", 
+                return je_store_error(context, JE_RESULT_INCORRECT_FUNC_RETURN_TYPE, NULL, "Call to function returned incorrect type '%s' expecting '%s'.", 
                     je_type_name(context->function_result.type), je_type_name(context->active_function->return_type));
             }
             
@@ -3834,6 +3933,7 @@ int je_compile(je_context_t* context, const char* source) {
 #ifdef JE_JIT_AVAILABLE
     context->jit_compiled = false;
 #endif
+    context->source = source;
     context->read_ptr = source;
 
     if (context->flags & JE_FLAG_DEBUG_MEM_LOGGING) {
@@ -3854,10 +3954,10 @@ int je_compile(je_context_t* context, const char* source) {
 
     // Make sure we actually parsed something valid.
     if (context->ast_root == NULL) {
-        return je_store_error(context, JE_RESULT_EMPTY_EXPRESSION, NULL);
+        return je_store_error(context, JE_RESULT_EMPTY_EXPRESSION, NULL, NULL);
     }
     if (context->read_ptr[0] != '\0') {
-        return je_store_error(context, JE_RESULT_UNEXPECTED_TRAILING_EXPRESSION, "Unexpected trailing expression\n\t%s", context->read_ptr);
+        return je_store_error(context, JE_RESULT_UNEXPECTED_TRAILING_EXPRESSION, context->read_ptr, "Unexpected trailing expression");
     }
 
     if (context->flags & JE_FLAG_DEBUG_LOGGING) {
@@ -5186,6 +5286,15 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
             int reg1 = je_jit_x86_emit_node(context, lvalue);
             int reg2 = je_jit_x86_emit_node(context, rvalue);
             je_jit_x86_emit_or_r32_r32(context, reg1, reg2);
+            je_jit_x86_free_reg(context, reg2);
+            return reg1;
+        }
+        case JE_NODE_BITWISE_XOR_INT: {
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_x86_emit_node(context, lvalue);
+            int reg2 = je_jit_x86_emit_node(context, rvalue);
+            je_jit_x86_emit_xor_r32_r32(context, reg1, reg2);
             je_jit_x86_free_reg(context, reg2);
             return reg1;
         }
