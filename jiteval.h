@@ -6217,6 +6217,32 @@ void je_jit_arm_emit_scvtf_r32(je_context_t* context, int vreg, int xreg) {
     context->jit_instruction_num++;
 }
 
+void je_jit_arm_emit_fcvtzs_r32(je_context_t* context, int xreg, int vreg) {
+    struct {
+        uint32_t Rd     : 5;
+        uint32_t Rn     : 5;
+        uint32_t opcode : 6;
+        uint32_t rmode  : 2;
+        uint32_t ftype  : 2;
+        uint32_t S      : 1;
+        uint32_t sf     : 1;
+        uint32_t fixed  : 10;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rd     = xreg;
+    bitfield.Rn     = vreg;
+    bitfield.opcode = 0;
+    bitfield.rmode  = 3;
+    bitfield.ftype  = 0;
+    bitfield.S      = 0;
+    bitfield.sf     = 0;
+    bitfield.fixed  = 0x279;
+
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
+    context->jit_instruction_num++;
+}
+
 void je_jit_arm_emit_movz_r32_imm16(je_context_t* context, int reg, uint16_t value) {
     struct {
         uint32_t Rd      : 5;
