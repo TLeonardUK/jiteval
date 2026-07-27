@@ -6329,7 +6329,7 @@ void je_jit_arm_emit_ldr_s32(je_context_t* context, int reg, int addr_reg) {
     context->jit_instruction_num++;
 }
 
-void je_jit_arm_emit_fneg_r32(je_context_t* context, int reg1) {
+void je_jit_arm_emit_fneg_r32(je_context_t* context, int reg1, int reg2) {
     struct {
         uint32_t Rd      : 5;
         uint32_t Rn      : 5;
@@ -6339,7 +6339,7 @@ void je_jit_arm_emit_fneg_r32(je_context_t* context, int reg1) {
     assert(sizeof(bitfield) == 4);
     
     bitfield.Rd = reg1;
-    bitfield.Rn = reg1;
+    bitfield.Rn = reg2;
     bitfield.opcode = 0b010000;
     bitfield.fixed = 0x1E21;
 
@@ -6574,7 +6574,7 @@ int je_jit_arm_emit_node(je_context_t* context, je_ast_node_t* node) {
             je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
             int reg1 = je_jit_arm_emit_node(context, lvalue);
             int reg2 = je_jit_arm_emit_node(context, rvalue);
-            int reg3 = je_jit_arm_alloc_x_reg(context, lvalue);
+            int reg3 = je_jit_arm_alloc_x_reg(context);
             je_jit_arm_emit_sdiv_r32(context, reg3, reg1, reg2);
             je_jit_arm_emit_msub_r32(context, reg3, reg3, reg2, reg1);
             je_jit_arm_free_reg(context, reg2);
