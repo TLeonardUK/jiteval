@@ -277,10 +277,16 @@ extern "C" {
     #error Unknown ISA
 #endif
 
-// Only support JIT for x86/x64 under msvc/gcc/clang for the moment.
-#if defined(JE_PLATFORM_WINDOWS) || defined(JE_PLATFORM_LINUX)
+// Determine if JIT is available for the current ISA/Compiler/Platform combination.
+#if defined(JE_PLATFORM_WINDOWS)
     #if defined(JE_COMPILER_MSVC) || defined(JE_COMPILER_GCC) || defined(JE_COMPILER_CLANG)
         #if defined(JE_ISA_X64) || defined(JE_ISA_X86)
+            #define JE_JIT_AVAILABLE
+        #endif
+    #endif
+#elif defined(JE_PLATFORM_LINUX)
+    #if defined(JE_COMPILER_GCC) || defined(JE_COMPILER_CLANG)
+        #if defined(JE_ISA_X64) || defined(JE_ISA_X86) || defined(JE_ISA_ARM32) || defined(JE_ISA_ARM64)
             #define JE_JIT_AVAILABLE
         #endif
     #endif
@@ -288,18 +294,28 @@ extern "C" {
 
 #ifdef JE_JIT_AVAILABLE
     #ifdef JE_COMPILER_MSVC
-        #ifdef JE_ISA_X64
+        #if defined(JE_ISA_X64)
             #define JE_CALLING_CONVENTION_MSVC
-        #else
+        #elif defined(JE_ISA_X86)
             #define JE_CALLING_CONVENTION_C
         #endif
     #elif defined(JE_COMPILER_GCC) || defined(JE_COMPILER_CLANG)
-        #ifdef JE_ISA_X64
+        #if defined(JE_ISA_X64)
             #define JE_CALLING_CONVENTION_SYSTEMV
-        #else
+        #elif defined(JE_ISA_X86)
             #define JE_CALLING_CONVENTION_C
+        #elif defined(JE_ISA_ARM32)
+            #define JE_CALLING_CONVENTION_ARM32
+        #elif defined(JE_ISA_ARM64)
+            #define JE_CALLING_CONVENTION_ARM64
         #endif
-    #else
+    #endif
+
+    #if !defined(JE_CALLING_CONVENTION_MSVC) && \
+        !defined(JE_CALLING_CONVENTION_C) && \
+        !defined(JE_CALLING_CONVENTION_SYSTEMV) && \
+        !defined(JE_CALLING_CONVENTION_ARM32) && \
+        !defined(JE_CALLING_CONVENTION_ARM64)
         #error Unknown calling convention
     #endif
 #endif
@@ -5666,7 +5682,386 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
     return 0;
 }
 
-#endif // JE_ISA_ARM64
+// -----------------------------------------------------------------------
+// ARM32 / ARM64 JIT
+// -----------------------------------------------------------------------
+#elif defined(JE_ISA_ARM32) || defined(JE_ISA_ARM64)
+
+#define JE_JIT_ARM_REG_SP       (0)
+#define JE_JIT_ARM_REG_XSR      (1)
+#define JE_JIT_ARM_REG_X0       (2)
+#define JE_JIT_ARM_REG_X1       (3)
+#define JE_JIT_ARM_REG_X2       (4)
+#define JE_JIT_ARM_REG_X3       (5)
+#define JE_JIT_ARM_REG_X4       (6)
+#define JE_JIT_ARM_REG_X5       (7)
+#define JE_JIT_ARM_REG_X6       (8)
+#define JE_JIT_ARM_REG_X7       (9)
+#define JE_JIT_ARM_REG_X8       (10)
+#define JE_JIT_ARM_REG_X9       (11)
+#define JE_JIT_ARM_REG_X10      (12)
+#define JE_JIT_ARM_REG_X11      (13)
+#define JE_JIT_ARM_REG_X12      (14)
+#define JE_JIT_ARM_REG_X13      (15)
+#define JE_JIT_ARM_REG_X14      (16)
+#define JE_JIT_ARM_REG_X15      (17)
+#define JE_JIT_ARM_REG_X16      (18)
+#define JE_JIT_ARM_REG_X17      (19)
+#define JE_JIT_ARM_REG_X18      (20)
+#define JE_JIT_ARM_REG_X19      (21)
+#define JE_JIT_ARM_REG_X20      (22)
+#define JE_JIT_ARM_REG_X21      (23)
+#define JE_JIT_ARM_REG_X22      (24)
+#define JE_JIT_ARM_REG_X23      (25)
+#define JE_JIT_ARM_REG_X24      (26)
+#define JE_JIT_ARM_REG_X25      (27)
+#define JE_JIT_ARM_REG_X26      (28)
+#define JE_JIT_ARM_REG_X27      (29)
+#define JE_JIT_ARM_REG_X28      (30)
+#define JE_JIT_ARM_REG_X29      (31)
+#define JE_JIT_ARM_REG_X30      (32)
+#define JE_JIT_ARM_REG_V0       (33)
+#define JE_JIT_ARM_REG_V1       (34)
+#define JE_JIT_ARM_REG_V2       (35)
+#define JE_JIT_ARM_REG_V3       (36)
+#define JE_JIT_ARM_REG_V4       (37)
+#define JE_JIT_ARM_REG_V5       (38)
+#define JE_JIT_ARM_REG_V6       (39)
+#define JE_JIT_ARM_REG_V7       (40)
+#define JE_JIT_ARM_REG_V8       (41)
+#define JE_JIT_ARM_REG_V9       (42)
+#define JE_JIT_ARM_REG_V10      (43)
+#define JE_JIT_ARM_REG_V11      (44)
+#define JE_JIT_ARM_REG_V12      (45)
+#define JE_JIT_ARM_REG_V13      (46)
+#define JE_JIT_ARM_REG_V14      (47)
+#define JE_JIT_ARM_REG_V15      (48)
+#define JE_JIT_ARM_REG_V16      (49)
+#define JE_JIT_ARM_REG_V17      (50)
+#define JE_JIT_ARM_REG_V18      (51)
+#define JE_JIT_ARM_REG_V19      (52)
+#define JE_JIT_ARM_REG_V20      (53)
+#define JE_JIT_ARM_REG_V21      (54)
+#define JE_JIT_ARM_REG_V22      (55)
+#define JE_JIT_ARM_REG_V23      (56)
+#define JE_JIT_ARM_REG_V24      (57)
+#define JE_JIT_ARM_REG_V25      (58)
+#define JE_JIT_ARM_REG_V26      (59)
+#define JE_JIT_ARM_REG_V27      (60)
+#define JE_JIT_ARM_REG_V28      (61)
+#define JE_JIT_ARM_REG_V29      (62)
+#define JE_JIT_ARM_REG_V30      (63)
+#define JE_JIT_ARM_REG_V31      (64)
+
+void je_jit_arm_emit_prologue(je_context_t* context);
+void je_jit_arm_emit_epilogue(je_context_t* context, int result_reg);
+int  je_jit_arm_emit_node(je_context_t* context, je_ast_node_t* node);
+int  je_jit_arm_alloc_reg(je_context_t* context);
+void je_jit_arm_free_reg(je_context_t* context, int reg);
+
+int je_compile_jit(je_context_t* context) {
+    int ret;
+    
+    // Use remaining space in the mem arena for jit compiling.
+    context->jit_write_buffer = context->mem_arena + context->mem_arena_offset;
+    context->jit_write_buffer_len = (int)(JE_MEM_ARENA_SIZE - context->mem_arena_offset);
+    context->jit_write_ptr = context->jit_write_buffer;
+    context->jit_write_buffer_overflow = false;
+    context->jit_instruction_num = 0;
+    context->jit_code_bytes = 0;
+
+    context->mem_arena_frozen = true;
+    je_jit_arm_emit_prologue(context);
+    int return_reg = je_jit_arm_emit_node(context, context->ast_root);
+    je_jit_arm_emit_epilogue(context, return_reg);
+    context->mem_arena_frozen = false;
+
+    // Ran out of space while trying to emit all JIT code.
+    if (context->jit_write_buffer_overflow) {
+        return JE_RESULT_OOM;
+    }
+
+    // Emplace the compiled code into executable memory.
+    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
+    ret = je_alloc_executable(context, context->jit_write_buffer, jit_length, &context->jit_executable_memory, &context->jit_executable_memory_length);
+    if (ret < 0) {
+        return ret;
+    }
+
+    context->jit_code_bytes = jit_length;
+    context->jit_compiled = true;
+    return JE_RESULT_SUCCESS;
+}
+
+void je_jit_free(je_context_t* context) {
+    je_free_executable(context, context->jit_executable_memory, context->jit_code_bytes);
+}
+
+int je_jit_arm_alloc_x_reg(je_context_t* context) {
+    int gp_registers[8] = { 
+        JE_JIT_ARM_REG_X9,
+        JE_JIT_ARM_REG_X10,
+        JE_JIT_ARM_REG_X11,
+        JE_JIT_ARM_REG_X12,
+        JE_JIT_ARM_REG_X13,
+        JE_JIT_ARM_REG_X14,
+        JE_JIT_ARM_REG_X15,
+        JE_JIT_ARM_REG_X16,
+        JE_JIT_ARM_REG_X17    
+    };
+    int gp_registers_num = sizeof(gp_registers) / sizeof(*gp_registers);
+
+    int alloc_index = context->jit_register_allocation_counter++;
+
+    // Find one thats available.
+    for (int i = 0; i < gp_registers_num; i++) {
+        int reg = gp_registers[i];
+        if (context->jit_register_allocation[reg].alloc_count == 0) {
+            context->jit_register_allocation[reg].alloc_count++;
+            context->jit_register_allocation[reg].alloc_index = alloc_index;
+            return reg;
+        }
+    }
+
+    // We don't support spilling registers on arm as we have soo many gp registers. 
+    // If we get to this point something has gone wrong in our code generation.
+    assert(false);
+    return 0;
+}
+
+int je_jit_arm_alloc_v_reg(je_context_t* context) {
+    int gp_registers[8] = {
+        JE_JIT_ARM_REG_V0,
+        JE_JIT_ARM_REG_V1,
+        JE_JIT_ARM_REG_V2,
+        JE_JIT_ARM_REG_V3,
+        JE_JIT_ARM_REG_V4,
+        JE_JIT_ARM_REG_V5,
+        JE_JIT_ARM_REG_V6,
+        JE_JIT_ARM_REG_V7,
+        JE_JIT_ARM_REG_V8
+    };
+    int gp_registers_num = sizeof(gp_registers) / sizeof(*gp_registers);
+
+    int alloc_index = context->jit_register_allocation_counter++;
+
+    // Find one thats available.
+    for (int i = 0; i < gp_registers_num; i++) {
+        int reg = gp_registers[i];
+        if (context->jit_register_allocation[reg].alloc_count == 0) {
+            context->jit_register_allocation[reg].alloc_count++;
+            context->jit_register_allocation[reg].alloc_index = alloc_index;
+            return reg;
+        }
+    }
+
+    // We don't support spilling registers on arm as we have soo many gp registers. 
+    // If we get to this point something has gone wrong in our code generation.
+    assert(false);
+    return 0;
+}
+
+void je_jit_arm_free_reg(je_context_t* context, int reg) {
+    context->jit_register_allocation[reg].alloc_count--;
+}
+
+bool je_jit_arm_reg_allocated(je_context_t* context, int reg) {
+    return (context->jit_register_allocation[reg].alloc_count > 0);
+}
+
+void je_jit_arm_emit_prologue(je_context_t* context) {
+    // TODO
+}
+
+void je_jit_arm_emit_epilogue(je_context_t* context, int return_reg) {
+    // TODO
+}
+ 
+// Return value is the register the result is in if applicable.
+int je_jit_arm_emit_function_call(je_context_t* context, je_ast_node_t* node) {
+    // TODO
+    return 0;
+}
+
+// Return value is the register the result is in if applicable.
+int je_jit_arm_emit_node(je_context_t* context, je_ast_node_t* node) {
+    switch (node->type) {
+        // ------------------------------------------------------------------------------
+        // Integer operations
+        // ------------------------------------------------------------------------------
+        case JE_NODE_BITWISE_NOT_INT: {
+            // TODO
+        }
+        case JE_NODE_MUL_INT: {
+            // TODO
+        }
+        case JE_NODE_MOD_INT: 
+        case JE_NODE_DIV_INT: {
+            // TODO
+        }
+        case JE_NODE_SUB_INT: {
+            // TODO
+        }
+        case JE_NODE_ADD_INT: {
+            // TODO
+        }
+        case JE_NODE_LESS_INT: {
+            // TODO
+        }
+        case JE_NODE_LE_INT: {
+            // TODO
+        }
+        case JE_NODE_GREATER_INT: {
+            // TODO
+        }
+        case JE_NODE_GE_INT: {
+            // TODO
+        }
+        case JE_NODE_EQUAL_INT: {
+            // TODO
+        }
+        case JE_NODE_NOT_EQUAL_INT: {
+            // TODO
+        }
+        case JE_NODE_BITWISE_AND_INT: {
+            // TODO
+        }
+        case JE_NODE_BITWISE_OR_INT: {
+            // TODO
+        }
+        case JE_NODE_BITWISE_XOR_INT: {
+            // TODO
+        }
+        case JE_NODE_VARIABLE_INT: {
+            // TODO
+        }
+        case JE_NODE_NEG_INT: {
+            // TODO
+        }
+        case JE_NODE_POS_INT: {
+            // TODO
+        }
+        case JE_NODE_INT_LITERAL: {
+            // TODO
+        }
+        case JE_NODE_CAST_INT_TO_FLOAT: {
+            // TODO
+        }
+        case JE_NODE_CAST_INT_TO_BOOL: {
+            // TODO
+        }
+        case JE_NODE_FUNCTION_CALL_INT: {
+            // TODO
+        }
+
+        // ------------------------------------------------------------------------------
+        // Boolean Operations
+        // ------------------------------------------------------------------------------
+        case JE_NODE_LOGICAL_NOT_BOOL: {
+            // TODO
+        }
+        case JE_NODE_LOGICAL_AND_BOOL: {
+            // TODO
+        }
+        case JE_NODE_LOGICAL_OR_BOOL: {
+            // TODO
+        }
+        case JE_NODE_EQUAL_BOOL: {
+            // TODO
+        }
+        case JE_NODE_NOT_EQUAL_BOOL: {
+            // TODO
+        }
+        case JE_NODE_VARIABLE_BOOL: {
+            // TODO
+        }
+        case JE_NODE_BOOL_LITERAL: {
+            // TODO
+        }
+        case JE_NODE_CAST_BOOL_TO_INT: {
+            // TODO
+        }
+        case JE_NODE_CAST_BOOL_TO_FLOAT: {
+            // TODO
+        }
+        case JE_NODE_FUNCTION_CALL_BOOL: {
+            // TODO
+        }
+
+        // ------------------------------------------------------------------------------
+        // Float Operations
+        // ------------------------------------------------------------------------------
+        case JE_NODE_MUL_FLOAT: {
+            // TODO
+        }
+        case JE_NODE_DIV_FLOAT: {
+            // TODO
+        }
+        case JE_NODE_SUB_FLOAT: {
+            // TODO
+        }
+        case JE_NODE_ADD_FLOAT: {
+            // TODO
+        }
+        case JE_NODE_LESS_FLOAT: {
+            // TODO
+        }
+        case JE_NODE_GREATER_FLOAT: {
+            // TODO
+        }
+        case JE_NODE_LE_FLOAT: {
+            // TODO
+        }
+        case JE_NODE_GE_FLOAT: {
+            // TODO
+        }
+        case JE_NODE_EQUAL_FLOAT: {
+            // TODO
+        }
+        case JE_NODE_NOT_EQUAL_FLOAT: {
+            // TODO
+        }
+        case JE_NODE_VARIABLE_FLOAT: {
+            // TODO
+        }
+        case JE_NODE_NEG_FLOAT: {
+            // TODO
+        }
+        case JE_NODE_POS_FLOAT: {
+            // TODO
+        }
+        case JE_NODE_FLOAT_LITERAL: {
+            // TODO
+        }
+        case JE_NODE_CAST_FLOAT_TO_INT: {
+            // TODO
+        }
+        case JE_NODE_CAST_FLOAT_TO_BOOL: {
+            // TODO
+        }
+        case JE_NODE_FUNCTION_CALL_FLOAT: {
+            // TODO
+        }
+
+        // ------------------------------------------------------------------------------
+        // String Operations
+        // ------------------------------------------------------------------------------
+        case JE_NODE_VARIABLE_STRING: {
+            // TODO
+        }
+        case JE_NODE_STRING_LITERAL: {
+            // TODO
+        }
+        case JE_NODE_FUNCTION_CALL_STRING: {
+            // TODO
+        }
+
+    }
+    assert(false);
+    return 0;
+}
+
+#endif // JE_ISA_X86/64/arm32/arm64
 #endif // JE_JIT_AVAILABLE
 
 #endif
