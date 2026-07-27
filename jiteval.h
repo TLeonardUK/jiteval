@@ -5826,7 +5826,7 @@ void je_jit_arm_emit_add_sub_imm12(je_context_t* context, int dst, int src, int 
         uint32_t sf         : 1;
     } bitfield;
     assert(sizeof(bitfield) == 4);
-    assert(imm12 < (2 ^ 12));
+    assert(imm12 < 4096);
 
     bitfield.sf         = 1;
     bitfield.op         = is_add ? 0 : 1;
