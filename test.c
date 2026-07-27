@@ -181,7 +181,6 @@ void run_tests() {
 
     // Variables
     asset_result_float("PI", 3.14159265f);
-
 }
 
 int main(int argc, char* argv[]) {

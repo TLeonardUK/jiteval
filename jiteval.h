@@ -5687,71 +5687,75 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
 // -----------------------------------------------------------------------
 #elif defined(JE_ISA_ARM32) || defined(JE_ISA_ARM64)
 
-#define JE_JIT_ARM_REG_SP       (0)
-#define JE_JIT_ARM_REG_XSR      (1)
-#define JE_JIT_ARM_REG_X0       (2)
-#define JE_JIT_ARM_REG_X1       (3)
-#define JE_JIT_ARM_REG_X2       (4)
-#define JE_JIT_ARM_REG_X3       (5)
-#define JE_JIT_ARM_REG_X4       (6)
-#define JE_JIT_ARM_REG_X5       (7)
-#define JE_JIT_ARM_REG_X6       (8)
-#define JE_JIT_ARM_REG_X7       (9)
-#define JE_JIT_ARM_REG_X8       (10)
-#define JE_JIT_ARM_REG_X9       (11)
-#define JE_JIT_ARM_REG_X10      (12)
-#define JE_JIT_ARM_REG_X11      (13)
-#define JE_JIT_ARM_REG_X12      (14)
-#define JE_JIT_ARM_REG_X13      (15)
-#define JE_JIT_ARM_REG_X14      (16)
-#define JE_JIT_ARM_REG_X15      (17)
-#define JE_JIT_ARM_REG_X16      (18)
-#define JE_JIT_ARM_REG_X17      (19)
-#define JE_JIT_ARM_REG_X18      (20)
-#define JE_JIT_ARM_REG_X19      (21)
-#define JE_JIT_ARM_REG_X20      (22)
-#define JE_JIT_ARM_REG_X21      (23)
-#define JE_JIT_ARM_REG_X22      (24)
-#define JE_JIT_ARM_REG_X23      (25)
-#define JE_JIT_ARM_REG_X24      (26)
-#define JE_JIT_ARM_REG_X25      (27)
-#define JE_JIT_ARM_REG_X26      (28)
-#define JE_JIT_ARM_REG_X27      (29)
-#define JE_JIT_ARM_REG_X28      (30)
-#define JE_JIT_ARM_REG_X29      (31)
-#define JE_JIT_ARM_REG_X30      (32)
-#define JE_JIT_ARM_REG_V0       (33)
-#define JE_JIT_ARM_REG_V1       (34)
-#define JE_JIT_ARM_REG_V2       (35)
-#define JE_JIT_ARM_REG_V3       (36)
-#define JE_JIT_ARM_REG_V4       (37)
-#define JE_JIT_ARM_REG_V5       (38)
-#define JE_JIT_ARM_REG_V6       (39)
-#define JE_JIT_ARM_REG_V7       (40)
-#define JE_JIT_ARM_REG_V8       (41)
-#define JE_JIT_ARM_REG_V9       (42)
-#define JE_JIT_ARM_REG_V10      (43)
-#define JE_JIT_ARM_REG_V11      (44)
-#define JE_JIT_ARM_REG_V12      (45)
-#define JE_JIT_ARM_REG_V13      (46)
-#define JE_JIT_ARM_REG_V14      (47)
-#define JE_JIT_ARM_REG_V15      (48)
-#define JE_JIT_ARM_REG_V16      (49)
-#define JE_JIT_ARM_REG_V17      (50)
-#define JE_JIT_ARM_REG_V18      (51)
-#define JE_JIT_ARM_REG_V19      (52)
-#define JE_JIT_ARM_REG_V20      (53)
-#define JE_JIT_ARM_REG_V21      (54)
-#define JE_JIT_ARM_REG_V22      (55)
-#define JE_JIT_ARM_REG_V23      (56)
-#define JE_JIT_ARM_REG_V24      (57)
-#define JE_JIT_ARM_REG_V25      (58)
-#define JE_JIT_ARM_REG_V26      (59)
-#define JE_JIT_ARM_REG_V27      (60)
-#define JE_JIT_ARM_REG_V28      (61)
-#define JE_JIT_ARM_REG_V29      (62)
-#define JE_JIT_ARM_REG_V30      (63)
-#define JE_JIT_ARM_REG_V31      (64)
+#define JE_JIT_ARM_REG_X0       (0)
+#define JE_JIT_ARM_REG_X1       (1)
+#define JE_JIT_ARM_REG_X2       (2)
+#define JE_JIT_ARM_REG_X3       (3)
+#define JE_JIT_ARM_REG_X4       (4)
+#define JE_JIT_ARM_REG_X5       (5)
+#define JE_JIT_ARM_REG_X6       (6)
+#define JE_JIT_ARM_REG_X7       (7)
+#define JE_JIT_ARM_REG_X8       (8)
+#define JE_JIT_ARM_REG_X9       (9)
+#define JE_JIT_ARM_REG_X10      (10)
+#define JE_JIT_ARM_REG_X11      (11)
+#define JE_JIT_ARM_REG_X12      (12)
+#define JE_JIT_ARM_REG_X13      (13)
+#define JE_JIT_ARM_REG_X14      (14)
+#define JE_JIT_ARM_REG_X15      (15)
+#define JE_JIT_ARM_REG_X16      (16)
+#define JE_JIT_ARM_REG_X17      (17)
+#define JE_JIT_ARM_REG_X18      (18)
+#define JE_JIT_ARM_REG_X19      (19)
+#define JE_JIT_ARM_REG_X20      (20)
+#define JE_JIT_ARM_REG_X21      (21)
+#define JE_JIT_ARM_REG_X22      (22)
+#define JE_JIT_ARM_REG_X23      (23)
+#define JE_JIT_ARM_REG_X24      (24)
+#define JE_JIT_ARM_REG_X25      (25)
+#define JE_JIT_ARM_REG_X26      (26)
+#define JE_JIT_ARM_REG_X27      (27)
+#define JE_JIT_ARM_REG_X28      (28)
+#define JE_JIT_ARM_REG_X29      (29)
+#define JE_JIT_ARM_REG_X30      (30)
+#define JE_JIT_ARM_REG_X31      (31)
+#define JE_JIT_ARM_REG_SP       (31) // Alias of X31
+#define JE_JIT_ARM_REG_XZR      (31) // Alias of X31
+
+// These are offset for easier handling, subtract by V0 to get the correct
+// index when encoding instructions.
+#define JE_JIT_ARM_REG_V0       (32)
+#define JE_JIT_ARM_REG_V1       (33)
+#define JE_JIT_ARM_REG_V2       (34)
+#define JE_JIT_ARM_REG_V3       (35)
+#define JE_JIT_ARM_REG_V4       (36)
+#define JE_JIT_ARM_REG_V5       (37)
+#define JE_JIT_ARM_REG_V6       (38)
+#define JE_JIT_ARM_REG_V7       (39)
+#define JE_JIT_ARM_REG_V8       (40)
+#define JE_JIT_ARM_REG_V9       (41)
+#define JE_JIT_ARM_REG_V10      (42)
+#define JE_JIT_ARM_REG_V11      (43)
+#define JE_JIT_ARM_REG_V12      (44)
+#define JE_JIT_ARM_REG_V13      (45)
+#define JE_JIT_ARM_REG_V14      (46)
+#define JE_JIT_ARM_REG_V15      (47)
+#define JE_JIT_ARM_REG_V16      (48)
+#define JE_JIT_ARM_REG_V17      (49)
+#define JE_JIT_ARM_REG_V18      (50)
+#define JE_JIT_ARM_REG_V19      (51)
+#define JE_JIT_ARM_REG_V20      (52)
+#define JE_JIT_ARM_REG_V21      (53)
+#define JE_JIT_ARM_REG_V22      (54)
+#define JE_JIT_ARM_REG_V23      (55)
+#define JE_JIT_ARM_REG_V24      (56)
+#define JE_JIT_ARM_REG_V25      (57)
+#define JE_JIT_ARM_REG_V26      (58)
+#define JE_JIT_ARM_REG_V27      (59)
+#define JE_JIT_ARM_REG_V28      (60)
+#define JE_JIT_ARM_REG_V29      (61)
+#define JE_JIT_ARM_REG_V30      (62)
+#define JE_JIT_ARM_REG_V31      (63)
 
 void je_jit_arm_emit_prologue(je_context_t* context);
 void je_jit_arm_emit_epilogue(je_context_t* context, int result_reg);
@@ -5795,6 +5799,115 @@ int je_compile_jit(je_context_t* context) {
 
 void je_jit_free(je_context_t* context) {
     je_free_executable(context, context->jit_executable_memory, context->jit_code_bytes);
+}
+
+void je_jit_arm_emit_instruction(je_context_t* context, uint8_t* instruction) {
+    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
+    int remaining_space = context->jit_write_buffer_len - jit_length;
+    if (remaining_space < 4) {
+        context->jit_write_buffer_overflow = true;
+        return;
+    }
+    *(context->jit_write_ptr++) = instruction[0];
+    *(context->jit_write_ptr++) = instruction[1];
+    *(context->jit_write_ptr++) = instruction[2];
+    *(context->jit_write_ptr++) = instruction[3];
+}
+
+void je_jit_arm_emit_add_sub_imm12(je_context_t* context, int dst, int src, int imm12, bool is_add) {
+    struct {
+        uint32_t sf      : 1;
+        uint32_t op      : 1;
+        uint32_t S       : 1;
+        uint32_t opcode  : 6;
+        uint32_t sh      : 1;
+        uint32_t imm12   : 12;
+        uint32_t Rn      : 5;
+        uint32_t Rd      : 5;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+    assert(imm12 < (1 ^ 12));
+
+    bitfield.sf         = 1;
+    bitfield.op         = is_add ? 0 : 1;
+    bitfield.S          = 0;
+    bitfield.opcode     = 0b10001;
+    bitfield.sh         = 0;
+    bitfield.imm12      = imm12;
+    bitfield.Rn         = src;
+    bitfield.Rd         = dst;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_sub_imm12(je_context_t* context, int dst, int src, int imm12) {
+    je_jit_arm_emit_add_sub_imm12(dst, src, imm12, false);
+}
+
+void je_jit_arm_emit_add_imm12(je_context_t* context, int dst, int src, int imm12) {
+    je_jit_arm_emit_add_sub_imm12(dst, src, imm12, true);
+}
+
+void je_jit_arm_emit_ldp_stp_addr(je_context_t* context, int reg1, int reg2, int dst_addr_reg, bool is_load) {
+    struct {
+        uint32_t opc : 2;
+        uint32_t V : 1;
+        uint32_t L : 1;
+        uint32_t opcode : 7;
+        uint32_t imm7 : 7;
+        uint32_t Rt2 : 5;
+        uint32_t Rn : 5;
+        uint32_t Rd : 5;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.opc = 0b10;
+    bitfield.V = 0;
+    bitfield.L = is_load ? 1 : 0;
+    bitfield.opcode = 0b1010010;
+    bitfield.imm7 = 0;
+    bitfield.Rt2 = reg2;
+    bitfield.Rn = dst_addr_reg;
+    bitfield.Rt = reg1;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_stp_addr(je_context_t* context, int reg1, int reg2, int dst_addr_reg) {
+    je_jit_arm_emit_ldp_stp_addr(context, reg1, reg2, dst_addr_reg, false);
+}
+
+void je_jit_arm_emit_ldp_addr(je_context_t* context, int reg1, int reg2, int dst_addr_reg) {
+    je_jit_arm_emit_ldp_stp_addr(context, reg1, reg2, dst_addr_reg, true);
+}
+
+void je_jit_arm_emit_ret(je_context_t* context, int reg1, int reg2, int dst_addr_reg) {
+    struct {
+        uint32_t op0    : 7;
+        uint32_t op1    : 4;
+        uint32_t op2    : 5;
+        uint32_t op3    : 6;
+        uint32_t Rn     : 5;
+        uint32_t op4    : 5;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.op4 = 0b00000;
+    bitfield.Rn = JE_JIT_ARM_REG_X30; // link register
+    bitfield.op3 = 0b000000;
+    bitfield.op2 = 0b11111;
+    bitfield.op1 = 0b0010;
+    bitfield.op0 = 0b1101011;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_mov(je_context_t* context, int dst, int src) {
+    // ARM just encodes this as add dst, src, #0
+    je_jit_arm_emit_add_imm12(dst, src, 0);
 }
 
 int je_jit_arm_alloc_x_reg(je_context_t* context) {
@@ -5870,11 +5983,17 @@ bool je_jit_arm_reg_allocated(je_context_t* context, int reg) {
 }
 
 void je_jit_arm_emit_prologue(je_context_t* context) {
-    // TODO
+    // Link the frame record
+    je_jit_arm_emit_sub_imm12(context, JE_JIT_ARM_REG_SP, JE_JIT_ARM_REG_SP, 16);
+    je_jit_arm_emit_stp_addr(context, JE_JIT_ARM_REG_X29, JE_JIT_ARM_REG_X30, JE_JIT_ARM_REG_SP);
+    je_jit_arm_emit_mov(context, JE_JIT_ARM_REG_X29, JE_JIT_ARM_REG_SP);
 }
 
 void je_jit_arm_emit_epilogue(je_context_t* context, int return_reg) {
-    // TODO
+    // Unlink the frame record
+    je_jit_arm_emit_ldp_addr(context, JE_JIT_ARM_REG_X29, JE_JIT_ARM_REG_X30, JE_JIT_ARM_REG_SP);
+    je_jit_arm_emit_add_imm12(context, JE_JIT_ARM_REG_SP, JE_JIT_ARM_REG_SP, 16);
+    je_jit_arm_emit_ret(context);
 }
  
 // Return value is the register the result is in if applicable.
@@ -6057,7 +6176,7 @@ int je_jit_arm_emit_node(je_context_t* context, je_ast_node_t* node) {
         }
 
     }
-    assert(false);
+//    assert(false);
     return 0;
 }
 
