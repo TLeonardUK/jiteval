@@ -5837,7 +5837,7 @@ void je_jit_arm_emit_add_sub_imm12(je_context_t* context, int dst, int src, int 
     bitfield.Rn         = src;
     bitfield.Rd         = dst;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -5874,7 +5874,7 @@ void je_jit_arm_emit_add_sub_r32(je_context_t* context, int dst, int reg1, int r
     bitfield.op = is_add ? 0 : 1;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -5908,7 +5908,7 @@ void je_jit_arm_emit_ldp_stp_addr(je_context_t* context, int reg1, int reg2, int
     bitfield.Rn = dst_addr_reg;
     bitfield.Rt = reg1;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -5938,7 +5938,7 @@ void je_jit_arm_emit_ret(je_context_t* context, int reg1, int reg2, int dst_addr
     bitfield.op1 = 0b0010;
     bitfield.op0 = 0b1101011;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -5969,7 +5969,7 @@ void je_jit_arm_emit_orn_r32(je_context_t* context, int dst, int reg1, int reg2)
     bitfield.opc = 0b01;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -5995,7 +5995,7 @@ void je_jit_arm_emit_and_r32(je_context_t* context, int dst, int reg1, int reg2)
     bitfield.opc = 0b00;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6021,7 +6021,7 @@ void je_jit_arm_emit_orr_r32(je_context_t* context, int dst, int reg1, int reg2)
     bitfield.opc = 0b01;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6047,7 +6047,7 @@ void je_jit_arm_emit_eor_r32(je_context_t* context, int dst, int reg1, int reg2)
     bitfield.opc = 0b10;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6069,7 +6069,7 @@ void je_jit_arm_emit_madd_r32(je_context_t* context, int dst, int reg1, int reg2
     bitfield.opcode = 0b0011011000;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6091,7 +6091,7 @@ void je_jit_arm_emit_sdiv_r32(je_context_t* context, int dst, int reg1, int reg2
     bitfield.opcode = 0b0011010110;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6115,7 +6115,7 @@ void je_jit_arm_emit_msub_r32(je_context_t* context, int dst, int reg1, int reg2
     bitfield.opcode = 0b0011011000;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6146,7 +6146,7 @@ void je_jit_arm_emit_cmp_r32(je_context_t* context, int reg1, int reg2) {
     bitfield.op = 1;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6172,7 +6172,7 @@ void je_jit_arm_emit_cset_r32(je_context_t* context, int reg1, int condition) {
     bitfield.fixed = 0b110101;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6214,7 +6214,7 @@ void je_jit_arm_emit_scvtf_r32(je_context_t* context, int vreg, int xreg) {
     bitfield.opcode = 0b100010;
     bitfield.fixed = 0x1E22;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6234,7 +6234,7 @@ void je_jit_arm_emit_movz_r32_imm16(je_context_t* context, int reg, uint16_t val
     bitfield.fixed = 0b101001010;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6254,7 +6254,7 @@ void je_jit_arm_emit_movk_r32_imm16(je_context_t* context, int reg, int value, i
     bitfield.fixed = 0b111001010;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6290,7 +6290,7 @@ void je_jit_arm_emit_ldr_r32(je_context_t* context, int reg, int addr_reg) {
     bitfield.Rn = addr_reg;
     bitfield.fixed = 0b1011100101;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6308,7 +6308,7 @@ void je_jit_arm_emit_ldr_r64(je_context_t* context, int reg, int addr_reg) {
     bitfield.Rn = addr_reg;
     bitfield.fixed = 0b1111100101;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6326,7 +6326,7 @@ void je_jit_arm_emit_ldr_s32(je_context_t* context, int reg, int addr_reg) {
     bitfield.imm12 = 0;
     bitfield.fixed = 0b1011110101;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6344,7 +6344,7 @@ void je_jit_arm_emit_fneg_r32(je_context_t* context, int reg1) {
     bitfield.opcode = 0b010000;
     bitfield.fixed = 0x1E21;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6362,7 +6362,7 @@ void je_jit_arm_emit_fmul_r32(je_context_t* context, int reg1, int reg2) {
     bitfield.opcode = 0b000010;
     bitfield.fixed = 0x1E22;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6380,7 +6380,7 @@ void je_jit_arm_emit_fdiv_r32(je_context_t* context, int reg1, int reg2) {
     bitfield.opcode = 0b100000;
     bitfield.fixed = 0x1E22;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6398,7 +6398,7 @@ void je_jit_arm_emit_fsub_r32(je_context_t* context, int reg1, int reg2) {
     bitfield.opcode = 0b011100;
     bitfield.fixed = 0x1E22;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6416,7 +6416,7 @@ void je_jit_arm_emit_fadd_r32(je_context_t* context, int reg1, int reg2) {
     bitfield.opcode = 0b001000;
     bitfield.fixed = 0x1E22;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6436,7 +6436,7 @@ void je_jit_arm_emit_fcmp_r32(je_context_t* context, int reg1, int reg2) {
     bitfield.type = 0b00;
     bitfield.fixed2 = 0b01111000010000;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 
@@ -6452,7 +6452,7 @@ void je_jit_arm_emit_fmov_r32(je_context_t* context, int reg1, int reg2) {
     bitfield.Rn = reg2;
     bitfield.fixed2 = 0b00011110001001110000;
 
-    je_jit_arm_emit_instruction(context, &bitfield);
+    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
     context->jit_instruction_num++;
 }
 

@@ -1,4 +1,7 @@
 #!/bin/bash
+git fetch
+git pull
+
 mkdir -p ../../bin/
 gcc ../../test.c -lm -o ../../bin/test.elf
 
