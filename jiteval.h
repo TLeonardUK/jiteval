@@ -263,7 +263,7 @@ extern "C" {
     #define JE_ISA_NAME "X86"
 #elif defined(_M_ARM64) || defined(__aarch64__)
     #define JE_ISA_ARM64
-    #define JE_ISA_NAME "ARM64
+    #define JE_ISA_NAME "ARM64"
 #elif defined(_M_ARM) || defined(__arm__)
     #define JE_ISA_ARM32
     #define JE_ISA_NAME "ARM32"
@@ -1679,7 +1679,7 @@ void je_intrinsic_min(je_context_t* ctx) {
     float b;
     je_get_parameter_float(ctx, 0, &a);
     je_get_parameter_float(ctx, 1, &b);
-    je_return_float(ctx, min(a, b));
+    je_return_float(ctx, a < b ? a : b);
 }
 
 void je_intrinsic_max(je_context_t* ctx) {
@@ -1687,7 +1687,7 @@ void je_intrinsic_max(je_context_t* ctx) {
     float b;
     je_get_parameter_float(ctx, 0, &a);
     je_get_parameter_float(ctx, 1, &b);
-    je_return_float(ctx, max(a, b));
+    je_return_float(ctx, a < b ? b : a);
 }
 
 void je_intrinsic_abs(je_context_t* ctx) {
