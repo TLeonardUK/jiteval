@@ -286,7 +286,7 @@ extern "C" {
     #endif
 #elif defined(JE_PLATFORM_LINUX)
     #if defined(JE_COMPILER_GCC) || defined(JE_COMPILER_CLANG)
-        #if defined(JE_ISA_X64) || defined(JE_ISA_X86) || defined(JE_ISA_ARM32) || defined(JE_ISA_ARM64)
+        #if defined(JE_ISA_X64) || defined(JE_ISA_X86) || defined(JE_ISA_ARM64)
             #define JE_JIT_AVAILABLE
         #endif
     #endif
@@ -5816,14 +5816,14 @@ void je_jit_arm_emit_instruction(je_context_t* context, uint8_t* instruction) {
 
 void je_jit_arm_emit_add_sub_imm12(je_context_t* context, int dst, int src, int imm12, bool is_add) {
     struct {
-        uint32_t sf      : 1;
-        uint32_t op      : 1;
-        uint32_t S       : 1;
-        uint32_t opcode  : 6;
-        uint32_t sh      : 1;
-        uint32_t imm12   : 12;
-        uint32_t Rn      : 5;
-        uint32_t Rd      : 5;
+        uint32_t Rd         : 5;
+        uint32_t Rn         : 5;
+        uint32_t imm12      : 12;
+        uint32_t sh         : 1;
+        uint32_t opcode     : 6;
+        uint32_t S          : 1;
+        uint32_t op         : 1;
+        uint32_t sf         : 1;
     } bitfield;
     assert(sizeof(bitfield) == 4);
     assert(imm12 < (1 ^ 12));
@@ -5849,16 +5849,53 @@ void je_jit_arm_emit_add_imm12(je_context_t* context, int dst, int src, int imm1
     je_jit_arm_emit_add_sub_imm12(dst, src, imm12, true);
 }
 
+void je_jit_arm_emit_add_sub_r32(je_context_t* context, int dst, int reg1, int reg2, bool is_add) {
+    struct {
+        uint32_t Rd      : 5;
+        uint32_t Rn      : 5;
+        uint32_t imm6    : 6;
+        uint32_t Rm      : 5;
+        uint32_t shift   : 2;
+        uint32_t opcode  : 5;
+        uint32_t S       : 1;
+        uint32_t op      : 1;
+        uint32_t sf      : 1;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+    assert(imm12 < (1 ^ 12));
+
+    bitfield.Rd = dst;
+    bitfield.Rn = reg1;
+    bitfield.imm6 = 0;
+    bitfield.Rm = reg2;
+    bitfield.shift = 0;
+    bitfield.opcode = 0b01011;
+    bitfield.S = 0;
+    bitfield.op = is_add ? 0 : 1;
+    bitfield.sf = 0;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_sub_r32(je_context_t* context, int dst, int reg1, int reg2) {
+    je_jit_arm_emit_add_sub_r32(dst, reg1, reg2, false);
+}
+
+void je_jit_arm_emit_add_r32(je_context_t* context, int dst, int reg1, int reg2) {
+    je_jit_arm_emit_add_sub_r32(dst, reg1, reg2, true);
+}
+
 void je_jit_arm_emit_ldp_stp_addr(je_context_t* context, int reg1, int reg2, int dst_addr_reg, bool is_load) {
     struct {
-        uint32_t opc : 2;
-        uint32_t V : 1;
-        uint32_t L : 1;
-        uint32_t opcode : 7;
-        uint32_t imm7 : 7;
-        uint32_t Rt2 : 5;
-        uint32_t Rn : 5;
-        uint32_t Rd : 5;
+        uint32_t opc        : 2;
+        uint32_t V          : 1;
+        uint32_t L          : 1;
+        uint32_t opcode     : 7;
+        uint32_t imm7       : 7;
+        uint32_t Rt2        : 5;
+        uint32_t Rn         : 5;
+        uint32_t Rd         : 5;
     } bitfield;
     assert(sizeof(bitfield) == 4);
 
@@ -5908,6 +5945,515 @@ void je_jit_arm_emit_ret(je_context_t* context, int reg1, int reg2, int dst_addr
 void je_jit_arm_emit_mov(je_context_t* context, int dst, int src) {
     // ARM just encodes this as add dst, src, #0
     je_jit_arm_emit_add_imm12(dst, src, 0);
+}
+
+void je_jit_arm_emit_orn_r32(je_context_t* context, int dst, int reg1, int reg2) {
+    struct {
+        uint32_t Rd         : 5;
+        uint32_t Rn         : 5;
+        uint32_t imm6       : 6;
+        uint32_t Rm         : 5;
+        uint32_t N          : 1;
+        uint32_t fixed      : 5;
+        uint32_t opc        : 2;
+        uint32_t sf         : 1;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rd = dst;
+    bitfield.Rn = reg1;
+    bitfield.imm6 = 0;
+    bitfield.Rm = reg2;
+    bitfield.N = 1;
+    bitfield.opcode = 0b01010;
+    bitfield.opc = 0b01;
+    bitfield.sf = 0;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_and_r32(je_context_t* context, int dst, int reg1, int reg2) {
+    struct {
+        uint32_t Rd         : 5;
+        uint32_t Rn         : 5;
+        uint32_t imm6       : 6;
+        uint32_t Rm         : 5;
+        uint32_t N          : 1;
+        uint32_t fixed      : 5;
+        uint32_t opc        : 2;
+        uint32_t sf         : 1;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rd = dst;
+    bitfield.Rn = reg1;
+    bitfield.imm6 = 0;
+    bitfield.Rm = reg2;
+    bitfield.N = 0;
+    bitfield.opcode = 0b01010;
+    bitfield.opc = 0b00;
+    bitfield.sf = 0;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_orr_r32(je_context_t* context, int dst, int reg1, int reg2) {
+    struct {
+        uint32_t Rd         : 5;
+        uint32_t Rn         : 5;
+        uint32_t imm6       : 6;
+        uint32_t Rm         : 5;
+        uint32_t N          : 1;
+        uint32_t fixed      : 5;
+        uint32_t opc        : 2;
+        uint32_t sf         : 1;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rd = dst;
+    bitfield.Rn = reg1;
+    bitfield.imm6 = 0;
+    bitfield.Rm = reg2;
+    bitfield.N = 0;
+    bitfield.opcode = 0b01010;
+    bitfield.opc = 0b01;
+    bitfield.sf = 0;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_eor_r32(je_context_t* context, int dst, int reg1, int reg2) {
+    struct {
+        uint32_t Rd         : 5;
+        uint32_t Rn         : 5;
+        uint32_t imm6       : 6;
+        uint32_t Rm         : 5;
+        uint32_t N          : 1;
+        uint32_t fixed      : 5;
+        uint32_t opc        : 2;
+        uint32_t sf         : 1;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rd = dst;
+    bitfield.Rn = reg1;
+    bitfield.imm6 = 0;
+    bitfield.Rm = reg2;
+    bitfield.N = 0;
+    bitfield.opcode = 0b01010;
+    bitfield.opc = 0b10;
+    bitfield.sf = 0;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_madd_r32(je_context_t* context, int dst, int reg1, int reg2, int reg3) {
+    struct {
+        uint32_t Rd      : 5;
+        uint32_t Rn      : 5;
+        uint32_t Ra      : 5;
+        uint32_t Rm      : 5;
+        uint32_t opcode  : 11;
+        uint32_t sf      : 1;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rd = dst;
+    bitfield.Rn = reg1;
+    bitfield.Ra = reg3;
+    bitfield.Rm = reg2;
+    bitfield.opcode = 0b0011011000;
+    bitfield.sf = 0;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_sdiv_r32(je_context_t* context, int dst, int reg1, int reg2) {
+    struct {
+        uint32_t Rd         : 5;
+        uint32_t Rn         : 5;
+        uint32_t op         : 6;
+        uint32_t Rm         : 5;
+        uint32_t opcode     : 10;
+        uint32_t sf         : 1;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rd = dst;
+    bitfield.Rn = reg1;
+    bitfield.op = 0b000011;
+    bitfield.Rm = reg2;
+    bitfield.opcode = 0b0011010110;
+    bitfield.sf = 0;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_msub_r32(je_context_t* context, int dst, int reg1, int reg2, int reg3) {
+    struct {
+        uint32_t Rd         : 5;
+        uint32_t Rn         : 5;
+        uint32_t Ra         : 5;
+        uint32_t o0         : 1;
+        uint32_t Rm         : 5;
+        uint32_t opcode     : 10;
+        uint32_t sf         : 1;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rd = dst;
+    bitfield.Rn = reg1;
+    bitfield.Ra = reg3;
+    bitfield.o0 = 1;
+    bitfield.Rm = reg2;
+    bitfield.opcode = 0b0011011000;
+    bitfield.sf = 0;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_cmp_r32(je_context_t* context, int reg1, int reg2) {
+    // This is just encoded as a sub xzr, x0, x1
+    // Just subtracts and discards the result, and sets the relevant flags.
+
+    struct {
+        uint32_t Rd      : 5;
+        uint32_t Rn      : 5;
+        uint32_t imm6    : 6;
+        uint32_t Rm      : 5;
+        uint32_t shift   : 2;
+        uint32_t opcode  : 5;
+        uint32_t S       : 1;
+        uint32_t op      : 1;
+        uint32_t sf      : 1;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rd = JE_JIT_ARM_REG_XZR;
+    bitfield.Rn = reg1;
+    bitfield.imm6 = 0;
+    bitfield.Rm = reg2;
+    bitfield.shift = 0;
+    bitfield.opcode = 0b01011;
+    bitfield.S = 1;
+    bitfield.op = 1;
+    bitfield.sf = 0;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_cset_r32(je_context_t* context, int reg1, int condition) {
+    struct {
+        uint32_t Rd      : 5;
+        uint32_t Rm      : 5;
+        uint32_t cond    : 4;
+        uint32_t S       : 1;
+        uint32_t op      : 1;
+        uint32_t Rn      : 5;
+        uint32_t fixed   : 6;
+        uint32_t sf      : 1;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rd = reg1;
+    bitfield.Rm = JE_JIT_ARM_REG_XZR;
+    bitfield.cond = condition;
+    bitfield.S = 0;
+    bitfield.op = 1;
+    bitfield.Rn = JE_JIT_ARM_REG_XZR;
+    bitfield.fixed = 0b110101;
+    bitfield.sf = 0;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_cset_less_r32(je_context_t* context, int reg1) {
+    je_jit_arm_emit_cset_r32(context, reg1, 0b1011);
+}
+
+void je_jit_arm_emit_cset_less_equal_r32(je_context_t* context, int reg1) {
+    je_jit_arm_emit_cset_r32(context, reg1, 0b1101);
+}
+
+void je_jit_arm_emit_cset_greater_r32(je_context_t* context, int reg1) {
+    je_jit_arm_emit_cset_r32(context, reg1, 0b1100);
+}
+
+void je_jit_arm_emit_cset_greater_equal_r32(je_context_t* context, int reg1) {
+    je_jit_arm_emit_cset_r32(context, reg1, 0b1010);
+}
+
+void je_jit_arm_emit_cset_equal_r32(je_context_t* context, int reg1) {
+    je_jit_arm_emit_cset_r32(context, reg1, 0b0000);
+}
+
+void je_jit_arm_emit_cset_not_equal_r32(je_context_t* context, int reg1) {
+    je_jit_arm_emit_cset_r32(context, reg1, 0b0001);
+}
+
+void je_jit_arm_emit_scvtf_r32(je_context_t* context, int vreg, int xreg) {
+    struct {
+        uint32_t Rd      : 5;
+        uint32_t Rn      : 5;
+        uint32_t opcode  : 6;
+        uint32_t fixed   : 16;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+    
+    bitfield.Rd = vreg - JE_JIT_ARM_REG_V0;
+    bitfield.Rn = xreg;
+    bitfield.opcode = 0b100010;
+    bitfield.fixed = 0x1E22;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_movz_r32_imm16(je_context_t* context, int reg, uint16_t value) {
+    struct {
+        uint32_t Rd      : 5;
+        uint32_t imm16   : 16;
+        uint32_t hw      : 2;
+        uint32_t fixed   : 9;
+        uint32_t sf      : 1;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rd = 0;
+    bitfield.imm16 = value;
+    bitfield.hw = 0;
+    bitfield.fixed = 0b101001010;
+    bitfield.sf = 0;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_movk_r32_imm16(je_context_t* context, int reg, int value, int shift) {
+    struct {
+        uint32_t Rd      : 5;
+        uint32_t imm16   : 16;
+        uint32_t hw      : 2;
+        uint32_t fixed   : 9;
+        uint32_t sf      : 1;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rd = 0;
+    bitfield.imm16 = value;
+    bitfield.hw = 0;
+    bitfield.fixed = 0b111001010;
+    bitfield.sf = 0;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_mov_r32_imm32(je_context_t* context, int reg, uint32_t value) {
+    uint16_t high_bits = (value >> 16) & 0xFFFF;
+    uint16_t low_bits = value & 0xFFFF;
+    je_jit_arm_emit_movz_r32_imm16(context, reg, low_bits);
+    je_jit_arm_emit_movk_r32_imm16(context, reg, high_bits, 16);
+}
+
+void je_jit_arm_emit_mov_r32_imm64(je_context_t* context, int reg, uint64_t value) {
+    uint16_t bits0 = (value >> 48) & 0xFFFF;
+    uint16_t bits1 = (value >> 32) & 0xFFFF;
+    uint16_t bits2 = (value >> 16) & 0xFFFF;
+    uint16_t bits3 = value & 0xFFFF;
+    je_jit_arm_emit_movz_r32_imm16(context, reg, bits3);
+    je_jit_arm_emit_movk_r32_imm16(context, reg, bits2, 16);
+    je_jit_arm_emit_movk_r32_imm16(context, reg, bits1, 32);
+    je_jit_arm_emit_movk_r32_imm16(context, reg, bits0, 48);
+}
+
+void je_jit_arm_emit_ldr_r32(je_context_t* context, int reg, int addr_reg) {
+    struct {
+        uint32_t Rt      : 5;
+        uint32_t imm12   : 12;
+        uint32_t Rn      : 5;
+        uint32_t fixed   : 10;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+    
+    bitfield.Rt = reg;
+    bitfield.imm12 = 0;
+    bitfield.Rn = addr_reg;
+    bitfield.fixed = 0b1011100101;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_ldr_r64(je_context_t* context, int reg, int addr_reg) {
+    struct {
+        uint32_t Rt      : 5;
+        uint32_t imm12   : 12;
+        uint32_t Rn      : 5;
+        uint32_t fixed   : 10;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+    
+    bitfield.Rt = reg;
+    bitfield.imm12 = 0;
+    bitfield.Rn = addr_reg;
+    bitfield.fixed = 0b1111100101;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_ldr_s32(je_context_t* context, int reg, int addr_reg) {
+    struct {
+        uint32_t Rt         : 5;
+        uint32_t Rn         : 5;
+        uint32_t imm12      : 12;
+        uint32_t fixed      : 10;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+    
+    bitfield.Rt = reg;
+    bitfield.Rn = addr_reg;
+    bitfield.imm12 = 0;
+    bitfield.fixed = 0b1011110101;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_fneg_r32(je_context_t* context, int reg1) {
+    struct {
+        uint32_t Rd      : 5;
+        uint32_t Rn      : 5;
+        uint32_t opcode  : 6;
+        uint32_t fixed   : 16;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+    
+    bitfield.Rd = reg1;
+    bitfield.Rn = reg1;
+    bitfield.opcode = 0b010000;
+    bitfield.fixed = 0x1E21;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_fmul_r32(je_context_t* context, int reg1, int reg2) {
+    struct {
+        uint32_t Rd      : 5;
+        uint32_t Rn      : 5;
+        uint32_t opcode  : 6;
+        uint32_t fixed   : 16;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+    
+    bitfield.Rd = reg1;
+    bitfield.Rn = reg1;
+    bitfield.opcode = 0b000010;
+    bitfield.fixed = 0x1E22;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_fdiv_r32(je_context_t* context, int reg1, int reg2) {
+    struct {
+        uint32_t Rd      : 5;
+        uint32_t Rn      : 5;
+        uint32_t opcode  : 6;
+        uint32_t fixed   : 16;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+    
+    bitfield.Rd = reg1;
+    bitfield.Rn = reg1;
+    bitfield.opcode = 0b100000;
+    bitfield.fixed = 0x1E22;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_fsub_r32(je_context_t* context, int reg1, int reg2) {
+    struct {
+        uint32_t Rd      : 5;
+        uint32_t Rn      : 5;
+        uint32_t opcode  : 6;
+        uint32_t fixed   : 16;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+    
+    bitfield.Rd = reg1;
+    bitfield.Rn = reg1;
+    bitfield.opcode = 0b011100;
+    bitfield.fixed = 0x1E22;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_fadd_r32(je_context_t* context, int reg1, int reg2) {
+    struct {
+        uint32_t Rd      : 5;
+        uint32_t Rn      : 5;
+        uint32_t opcode  : 6;
+        uint32_t fixed   : 16;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+    
+    bitfield.Rd = reg1;
+    bitfield.Rn = reg1;
+    bitfield.opcode = 0b001000;
+    bitfield.fixed = 0x1E22;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_fcmp_r32(je_context_t* context, int reg1, int reg2) {
+    struct {
+        uint32_t Rm      : 5;
+        uint32_t fixed1  : 6;
+        uint32_t Rn      : 5;
+        uint32_t type    : 2;
+        uint32_t fixed2  : 14;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+    
+    bitfield.Rm = reg2;
+    bitfield.fixed1 = 0b100000;
+    bitfield.Rn = reg1;
+    bitfield.type = 0b00;
+    bitfield.fixed2 = 0b01111000010000;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
+}
+
+void je_jit_arm_emit_fmov_r32(je_context_t* context, int reg1, int reg2) {
+    struct {
+        uint32_t Rd      : 5;
+        uint32_t Rn      : 5;
+        uint32_t fixed   : 22;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+    
+    bitfield.Rd = reg1;
+    bitfield.Rn = reg2;
+    bitfield.fixed2 = 0b00011110001001110000;
+
+    je_jit_arm_emit_instruction(context, &bitfield);
+    context->jit_instruction_num++;
 }
 
 int je_jit_arm_alloc_x_reg(je_context_t* context) {
@@ -5999,6 +6545,7 @@ void je_jit_arm_emit_epilogue(je_context_t* context, int return_reg) {
 // Return value is the register the result is in if applicable.
 int je_jit_arm_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     // TODO
+    assert(false);
     return 0;
 }
 
@@ -6009,174 +6556,445 @@ int je_jit_arm_emit_node(je_context_t* context, je_ast_node_t* node) {
         // Integer operations
         // ------------------------------------------------------------------------------
         case JE_NODE_BITWISE_NOT_INT: {
-            // TODO
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_orn_r32(context, reg1, JE_JIT_ARM_REG_XZR, reg1);
+            return reg1;
         }
         case JE_NODE_MUL_INT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_madd_r32(context, reg1, reg1, reg2, JE_JIT_ARM_REG_XZR);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
-        case JE_NODE_MOD_INT: 
+        case JE_NODE_MOD_INT: {
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            int reg3 = je_jit_arm_alloc_x_reg(context, lvalue);
+            je_jit_arm_emit_sdiv_r32(context, reg3, reg1, reg2);
+            je_jit_arm_emit_msub_r32(context, reg3, reg3, reg2, reg1);
+            je_jit_arm_free_reg(context, reg2);
+            je_jit_arm_free_reg(context, reg1);
+            return reg3;
+        }
         case JE_NODE_DIV_INT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_sdiv_r32(context, reg1, reg1, reg2);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_SUB_INT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_sub_r32(context, reg1, reg1, reg2);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_ADD_INT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_add_r32(context, reg1, reg1, reg2);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_LESS_INT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_cmp_r32(context, reg1, reg2);
+            je_jit_arm_emit_cset_less_r32(context, reg1);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_LE_INT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_cmp_r32(context, reg1, reg2);
+            je_jit_arm_emit_cset_less_equal_r32(context, reg1);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_GREATER_INT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_cmp_r32(context, reg1, reg2);
+            je_jit_arm_emit_cset_greater_r32(context, reg1);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_GE_INT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_cmp_r32(context, reg1, reg2);
+            je_jit_arm_emit_cset_greater_equal_r32(context, reg1);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_EQUAL_INT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_cmp_r32(context, reg1, reg2);
+            je_jit_arm_emit_cset_equal_r32(context, reg1);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_NOT_EQUAL_INT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_cmp_r32(context, reg1, reg2);
+            je_jit_arm_emit_cset_not_equal_r32(context, reg1);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_BITWISE_AND_INT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_and_r32(context, reg1, reg1, reg2);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_BITWISE_OR_INT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_orr_r32(context, reg1, reg1, reg2);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_BITWISE_XOR_INT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_eor_r32(context, reg1, reg1, reg2);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_VARIABLE_INT: {
-            // TODO
+            int addr_reg = je_jit_arm_alloc_x_reg(context);
+            int dst_reg = je_jit_arm_alloc_x_reg(context);
+            uint64_t address = (uint64_t)je_get_variable_int(je_get_ast_node_variable(context, node));
+            je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+            je_jit_arm_emit_ldr_r32(context, dst_reg, addr_reg);
+            je_jit_x86_free_reg(context, addr_reg);
+            return dst_reg;
         }
         case JE_NODE_NEG_INT: {
-            // TODO
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_sub_r32(context, reg1, JE_JIT_ARM_REG_XZR, reg1);
+            return reg1;
         }
         case JE_NODE_POS_INT: {
-            // TODO
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, rvalue);
+            // TODO: This is basically a nop, why do we have it?
+            return reg1;
         }
         case JE_NODE_INT_LITERAL: {
-            // TODO
+            int reg = je_jit_arm_alloc_x_reg(context);
+            uint32_t value = *((uint32_t*)je_get_ast_node_int(context, node));
+            je_jit_arm_emit_mov_r32_imm32(context, reg, value);
+            return reg;
         }
         case JE_NODE_CAST_INT_TO_FLOAT: {
-            // TODO
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, rvalue);
+            int reg2 = je_jit_arm_alloc_v_reg(context);
+            je_jit_arm_emit_scvtf_r32(context, reg2, reg1);
+            je_jit_arm_free_reg(context, reg1);
+            return reg2;
         }
         case JE_NODE_CAST_INT_TO_BOOL: {
-            // TODO
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_cmp_r32(context, reg1, JE_JIT_ARM_REG_XZR);
+            je_jit_arm_emit_cset_not_equal_r32(context, reg1);
+            return reg1;
         }
         case JE_NODE_FUNCTION_CALL_INT: {
-            // TODO
+            return je_jit_arm_emit_function_call(context, node);
         }
 
         // ------------------------------------------------------------------------------
         // Boolean Operations
         // ------------------------------------------------------------------------------
         case JE_NODE_LOGICAL_NOT_BOOL: {
-            // TODO
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_orn_r32(context, reg1, JE_JIT_ARM_REG_XZR, reg1);
+            return reg1;
         }
         case JE_NODE_LOGICAL_AND_BOOL: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_and_r32(context, reg1, reg1, reg2);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_LOGICAL_OR_BOOL: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_orr_r32(context, reg1, reg1, reg2);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_EQUAL_BOOL: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_cmp_r32(context, reg1, reg2);
+            je_jit_arm_emit_cset_equal_r32(context, reg1);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_NOT_EQUAL_BOOL: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_cmp_r32(context, reg1, reg2);
+            je_jit_arm_emit_cset_not_equal_r32(context, reg1);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_VARIABLE_BOOL: {
-            // TODO
+            int addr_reg = je_jit_arm_alloc_x_reg(context);
+            int dst_reg = je_jit_arm_alloc_x_reg(context);
+            uint64_t address = (uint64_t)je_get_variable_bool(je_get_ast_node_variable(context, node));
+            je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+            je_jit_arm_emit_ldr_r32(context, dst_reg, addr_reg);
+            je_jit_arm_free_reg(context, addr_reg);
+            return dst_reg;
         }
         case JE_NODE_BOOL_LITERAL: {
-            // TODO
+            int reg = je_jit_arm_alloc_x_reg(context);
+            uint32_t value = *((uint32_t*)je_get_ast_node_bool(context, node));
+            je_jit_arm_emit_mov_r32_imm32(context, reg, value);
+            return reg;
         }
         case JE_NODE_CAST_BOOL_TO_INT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            int reg1 = je_jit_x86_emit_node(context, lvalue);
+            // This is essentially a nop, they are stored identically.
+            return reg1;
         }
         case JE_NODE_CAST_BOOL_TO_FLOAT: {
-            // TODO
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, rvalue);
+            int reg2 = je_jit_arm_alloc_v_reg(context);
+            je_jit_arm_emit_scvtf_r32(context, reg2, reg1);
+            je_jit_arm_free_reg(context, reg1);
+            return reg2;
         }
         case JE_NODE_FUNCTION_CALL_BOOL: {
-            // TODO
+            return je_jit_arm_emit_function_call(context, node);
         }
 
         // ------------------------------------------------------------------------------
         // Float Operations
         // ------------------------------------------------------------------------------
         case JE_NODE_MUL_FLOAT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_fmul_r32(context, reg1, reg1, reg2);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_DIV_FLOAT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_fdiv_r32(context, reg1, reg1, reg2);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_SUB_FLOAT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_fsub_r32(context, reg1, reg1, reg2);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_ADD_FLOAT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_fadd_r32(context, reg1, reg1, reg2);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_LESS_FLOAT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_fcmp_r32(context, reg1, reg2);
+            je_jit_arm_emit_cset_less_r32(context, reg1);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_GREATER_FLOAT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_fcmp_r32(context, reg1, reg2);
+            je_jit_arm_emit_cset_greater_r32(context, reg1);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_LE_FLOAT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_fcmp_r32(context, reg1, reg2);
+            je_jit_arm_emit_cset_less_equal_r32(context, reg1);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_GE_FLOAT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_fcmp_r32(context, reg1, reg2);
+            je_jit_arm_emit_cset_greater_equal_r32(context, reg1);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_EQUAL_FLOAT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_fcmp_r32(context, reg1, reg2);
+            je_jit_arm_emit_cset_equal_r32(context, reg1);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_NOT_EQUAL_FLOAT: {
-            // TODO
+            je_ast_node_t* lvalue = je_get_node_child(context, node, 0);
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, lvalue);
+            int reg2 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_fcmp_r32(context, reg1, reg2);
+            je_jit_arm_emit_cset_not_equal_r32(context, reg1);
+            je_jit_arm_free_reg(context, reg2);
+            return reg1;
         }
         case JE_NODE_VARIABLE_FLOAT: {
-            // TODO
+            int addr_reg = je_jit_arm_alloc_x_reg(context);
+            int dst_reg = je_jit_arm_alloc_v_reg(context);
+            uint64_t address = (uint64_t)je_get_variable_int(je_get_ast_node_variable(context, node));
+            je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+            je_jit_arm_emit_ldr_s32(context, dst_reg, addr_reg);
+            je_jit_x86_free_reg(context, addr_reg);
+            return dst_reg;
         }
         case JE_NODE_NEG_FLOAT: {
-            // TODO
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, rvalue);
+            je_jit_arm_emit_fneg_r32(context, reg1, reg1);
+            return reg1;
         }
         case JE_NODE_POS_FLOAT: {
-            // TODO
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, rvalue);
+            // TODO: This is basically a nop, why do we have it?
+            return reg1;
         }
         case JE_NODE_FLOAT_LITERAL: {
-            // TODO
+            int reg1 = je_jit_arm_alloc_x_reg(context);
+            int reg2 = je_jit_arm_alloc_v_reg(context);
+            uint32_t value = *((uint32_t*)je_get_ast_node_float(context, node));
+            je_jit_arm_emit_mov_r32_imm32(context, reg1, value);
+            je_jit_arm_emit_fmov_r32(context, reg2, reg1);
+            je_jit_arm_free_reg(context, reg1);
+            return reg2;
         }
         case JE_NODE_CAST_FLOAT_TO_INT: {
-            // TODO
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, rvalue);
+            int reg2 = je_jit_arm_alloc_x_reg(context);
+            je_jit_arm_emit_fcvtzs_r32(context, reg2, reg1);
+            je_jit_arm_free_reg(context, reg1);
+            return reg2;
         }
         case JE_NODE_CAST_FLOAT_TO_BOOL: {
-            // TODO
+            je_ast_node_t* rvalue = je_get_node_child(context, node, 1);
+            int reg1 = je_jit_arm_emit_node(context, rvalue);
+            int reg2 = je_jit_arm_alloc_x_reg(context);
+            je_jit_arm_emit_fcvtzs_r32(context, reg2, reg1);
+            je_jit_arm_free_reg(context, reg1);
+            return reg2;
         }
         case JE_NODE_FUNCTION_CALL_FLOAT: {
-            // TODO
+            return je_jit_arm_emit_function_call(context, node);
         }
 
         // ------------------------------------------------------------------------------
         // String Operations
         // ------------------------------------------------------------------------------
         case JE_NODE_VARIABLE_STRING: {
-            // TODO
+            int addr_reg = je_jit_arm_alloc_x_reg(context);
+            int dst_reg = je_jit_arm_alloc_x_reg(context);
+            uint64_t address = (uint64_t)je_get_variable_bool(je_get_ast_node_variable(context, node));
+            je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+            je_jit_arm_emit_ldr_r64(context, dst_reg, addr_reg);
+            je_jit_arm_free_reg(context, addr_reg);
+            return dst_reg;
         }
         case JE_NODE_STRING_LITERAL: {
-            // TODO
+            int addr_reg = je_jit_arm_alloc_x_reg(context);
+            uint64_t address = (uint64_t)je_get_variable_string(je_get_ast_node_variable(context, node));
+            je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+            return addr_reg;
         }
         case JE_NODE_FUNCTION_CALL_STRING: {
-            // TODO
+            return je_jit_arm_emit_function_call(context, node);
         }
 
     }
-//    assert(false);
+    assert(false);
     return 0;
 }
 
