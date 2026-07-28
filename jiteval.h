@@ -6913,23 +6913,29 @@ void je_jit_arm_emit_fmov_r32(je_context_t* context, int reg1, int reg2) {
     struct {
         uint32_t Rd       : 5;
         uint32_t Rn       : 5;
-        uint32_t opc      : 7;
-        uint32_t fixed1   : 5;
+        uint32_t fixed1   : 6;
+        uint32_t opcode   : 3;
+        uint32_t rmode    : 2;
+        uint32_t fixed2   : 1;
         uint32_t ftype    : 2;
-        uint32_t fixed2   : 8;
+        uint32_t fixed3   : 7;
+        uint32_t sf       : 1;
     } bitfield;
     assert(sizeof(bitfield) == 4);
     
     bitfield.Rd = reg1 - JE_JIT_ARM_REG_V0;
-    bitfield.Rn = reg2 - JE_JIT_ARM_REG_V0;
-    bitfield.opc = 0b0010000;
-    bitfield.fixed1 = 0b10000;
-    bitfield.ftype = 00; // Single precision
-    bitfield.fixed2 = 0b00011110;
+    bitfield.Rn = reg2;
+    bitfield.fixed1 = 0;
+    bitfield.opcode = 0b111;
+    bitfield.rmode = 0b00;
+    bitfield.fixed2 = 1;
+    bitfield.ftype = 0b00; // Single precision
+    bitfield.fixed3 = 0b0011110;
+    bitfield.sf = 0;
 
     je_jit_start_instruction(context);
     je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
-    je_jit_end_instruction(context, "fmov s%i, s%i", bitfield.Rd, bitfield.Rn);
+    je_jit_end_instruction(context, "fmov s%i, x%i", bitfield.Rd, bitfield.Rn);
 }
 
 int je_jit_arm_alloc_x_reg(je_context_t* context) {
