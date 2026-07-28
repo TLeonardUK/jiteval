@@ -6557,7 +6557,7 @@ void je_jit_arm_emit_movz_r32_imm16(je_context_t* context, int reg, uint16_t val
 
     je_jit_start_instruction(context);
     je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
-    je_jit_end_instruction(context, "movz w%i, #%i, lsl #%i", reg, value, 0);
+    je_jit_end_instruction(context, "movz w%i, #0x%08x, lsl #%i", reg, value, 0);
 }
 
 void je_jit_arm_emit_movk_r32_imm16(je_context_t* context, int reg, int value, int shift) {
@@ -6578,7 +6578,7 @@ void je_jit_arm_emit_movk_r32_imm16(je_context_t* context, int reg, int value, i
 
     je_jit_start_instruction(context);
     je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
-    je_jit_end_instruction(context, "movk w%i, #%i, lsl #%i", reg, value, shift);
+    je_jit_end_instruction(context, "movk w%i, #0x%08x, lsl #%i", reg, value, shift);
 }
 
 void je_jit_arm_emit_movz_r64_imm16(je_context_t* context, int reg, uint16_t value) {
@@ -6599,7 +6599,7 @@ void je_jit_arm_emit_movz_r64_imm16(je_context_t* context, int reg, uint16_t val
 
     je_jit_start_instruction(context);
     je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
-    je_jit_end_instruction(context, "movz x%i, #%i, lsl #%i", reg, value, 0);
+    je_jit_end_instruction(context, "movz x%i, #0x%08x, lsl #%i", reg, value, 0);
 }
 
 void je_jit_arm_emit_movk_r64_imm16(je_context_t* context, int reg, int value, int shift) {
@@ -6620,7 +6620,7 @@ void je_jit_arm_emit_movk_r64_imm16(je_context_t* context, int reg, int value, i
 
     je_jit_start_instruction(context);
     je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
-    je_jit_end_instruction(context, "movk x%i, #%i, lsl #%i", reg, value, shift);
+    je_jit_end_instruction(context, "movk x%i, #0x%08x, lsl #%i", reg, value, shift);
 }
 
 void je_jit_arm_emit_mov_r32_imm32(je_context_t* context, int reg, uint32_t value) {
