@@ -218,11 +218,20 @@
 extern "C" {
 #endif
 
-#define JE_FAKE_ARM64_ON_X64
+// Handy macro that will go down the arm64 path on x64 for simpler
+// debugging of instruction encoding.
+//#define JE_DEBUG_FAKE_ARM64
+//#define JE_DEBUG_FAKE_JIT_AVAILABLE
+
+// When enabled all contexts are forced to have the given flags
+//#define JE_DEBUG_FORCE_FLAGS (JE_FLAG_DEBUG_JIT_DISASSEMBLY)
 
 // -----------------------------------------------------------------------
 // PLATFORM DETERMINATION OPTIONS
 // -----------------------------------------------------------------------
+
+#define JE_VERSION_MAJOR 0
+#define JE_VERSION_MINOR 1
 
 // Platform determination
 #if defined(_WIN32)
@@ -257,19 +266,15 @@ extern "C" {
 #endif
 
 // ISA determination.
-#if defined(JE_FAKE_ARM64_ON_X64)
-    // Used for testing instruction encoding when not on an arm machine.
+#if defined(_M_ARM64) || defined(__aarch64__) || defined(JE_DEBUG_FAKE_ARM64)
     #define JE_ISA_ARM64
-    #define JE_ISA_NAME "ARM64
+    #define JE_ISA_NAME "ARM64"
 #elif defined(_M_X64) || defined(__x86_64__)
     #define JE_ISA_X64
     #define JE_ISA_NAME "X64"
 #elif defined(_M_IX86) || defined(__i386__)
     #define JE_ISA_X86
     #define JE_ISA_NAME "X86"
-#elif defined(_M_ARM64) || defined(__aarch64__)
-    #define JE_ISA_ARM64
-    #define JE_ISA_NAME "ARM64"
 #elif defined(_M_ARM) || defined(__arm__)
     #define JE_ISA_ARM32
     #define JE_ISA_NAME "ARM32"
@@ -298,7 +303,7 @@ extern "C" {
     #endif
 #endif
 
-#if defined(JE_FAKE_ARM64_ON_X64) && !defined(JE_JIT_AVAILABLE)
+#if defined(JE_DEBUG_FAKE_JIT_AVAILABLE) && !defined(JE_JIT_AVAILABLE)
     #define JE_JIT_AVAILABLE
 #endif
 
@@ -424,6 +429,7 @@ extern "C" {
 #define JE_FLAG_DEBUG_LOGGING                       (4)     // Prints out the AST at different stages of compilation, among other things, used for debugging.
 #define JE_FLAG_DEBUG_MEM_LOGGING                   (8)     // Prints out memory allocations / arena states.
 #define JE_FLAG_NO_UTILITY_FUNCTIONS                (16)    // Prevents registration of the basic utility functions normally provided (min/max/abs/etc)
+#define JE_FLAG_DEBUG_JIT_DISASSEMBLY               (32)    // Prints out dissassembly of the JIT instruction stream
 
 typedef struct je_context_t je_context_t;
 typedef void (*je_func_t)(je_context_t* context);
@@ -482,6 +488,7 @@ void je_memory_stats(je_context_t* context, int* permanent_mem_used, int* transi
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <inttypes.h>
 
 #if defined(JE_PLATFORM_LINUX)
     #include <sys/mman.h>
@@ -756,6 +763,7 @@ typedef struct je_context_t {
     char*                           jit_write_buffer;                       // Start of buffer to generate JIT code into.
     char*                           jit_executable_memory;                  // Executable memory containing the JIT'd code.
     char*                           jit_write_ptr;                          // Current write pointer for generating JIT code.
+    char*                           jit_instruction_start;                  // Stores a pointer into the write buffer where the current instruction starts.
 #endif
 
     int                             error_code;                             // Last error that occured in the context.
@@ -1887,6 +1895,11 @@ char* je_eval_string(const char* expression, char* error_msg, int error_msg_len)
 }
 
 int je_new_context(je_context_t* context, int flags) {
+
+#ifdef JE_DEBUG_FORCE_FLAGS
+    flags |= JE_DEBUG_FORCE_FLAGS;
+#endif
+
     if (flags & JE_FLAG_DEBUG_LOGGING) {
 #ifdef JE_JIT_AVAILABLE
         const char* jit_available_str = "Yes";
@@ -1924,7 +1937,13 @@ int je_new_context(je_context_t* context, int flags) {
         je_bind_function(context, "max",            true, &je_intrinsic_max,                JE_TYPE_FLOAT,      JE_TYPE_FLOAT,      JE_TYPE_FLOAT,      NULL);
         je_bind_function(context, "abs",            true, &je_intrinsic_abs,                JE_TYPE_FLOAT,      JE_TYPE_FLOAT,      NULL);
 
-        je_bind_variable_float(context, "PI",       true, 3.14159265f);
+        je_bind_variable_float  (context,     "PI",              true, 3.14159265f);
+        je_bind_variable_float  (context,     "PI",              true, 3.14159265f);
+        je_bind_variable_string (context,    "__platform",       true, JE_PLATFORM_NAME);
+        je_bind_variable_string (context,    "__compiler",       true, JE_COMPILER_NAME);
+        je_bind_variable_string (context,    "__isa",            true, JE_ISA_NAME);
+        je_bind_variable_int    (context,    "__version_major",  true, JE_VERSION_MAJOR);
+        je_bind_variable_int    (context,    "__version_minor",  true, JE_VERSION_MINOR);
 
     }
 
@@ -3920,7 +3939,7 @@ int je_eval_slow(je_context_t* context, je_ast_node_t* node, je_value_t* result)
 
 #ifdef JE_JIT_AVAILABLE
 int je_eval_jit(je_context_t* context, je_ast_node_t* node, je_value_t* result) {
-#ifndef JE_FAKE_ARM64_ON_X64
+#ifndef JE_DEBUG_FAKE_JIT_AVAILABLE
     je_jit_func_t func = (je_jit_func_t)context->jit_executable_memory;
     func();
 #endif
@@ -4100,6 +4119,125 @@ int je_free_executable(je_context_t* context, void* memory, int code_size) {
 #endif // JE_JIT_AVAILABLE
 
 // -----------------------------------------------------------------------
+// ISA Agnostic Utility Functions
+// -----------------------------------------------------------------------
+
+void je_jit_emit_comment(je_context_t* context, const char* format, ...) {
+    if (context->flags & JE_FLAG_DEBUG_JIT_DISASSEMBLY) {
+        char buffer[128];
+        va_list va;
+        va_start(va, format);
+        vsnprintf(buffer, sizeof(buffer), format, va);
+        va_end(va);
+
+        printf("\n\t// %s\n", buffer);
+    }
+}
+
+void je_jit_emit_bytes_1(je_context_t* context, uint8_t byte1) {
+    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
+    int remaining_space = context->jit_write_buffer_len - jit_length;
+    if (remaining_space < 1) {
+        context->jit_write_buffer_overflow = true;
+        return;
+    }
+    *(context->jit_write_ptr++) = byte1;
+}
+
+void je_jit_emit_bytes_2(je_context_t* context, uint8_t byte1, uint8_t byte2) {
+    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
+    int remaining_space = context->jit_write_buffer_len - jit_length;
+    if (remaining_space < 2) {
+        context->jit_write_buffer_overflow = true;
+        return;
+    }
+    *(context->jit_write_ptr++) = byte1;
+    *(context->jit_write_ptr++) = byte2;
+}
+
+void je_jit_emit_bytes_3(je_context_t* context, uint8_t byte1, uint8_t byte2, uint8_t byte3) {
+    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
+    int remaining_space = context->jit_write_buffer_len - jit_length;
+    if (remaining_space < 3) {
+        context->jit_write_buffer_overflow = true;
+        return;
+    }
+    *(context->jit_write_ptr++) = byte1;
+    *(context->jit_write_ptr++) = byte2;
+    *(context->jit_write_ptr++) = byte3;
+}
+
+void je_jit_emit_bytes_4(je_context_t* context, uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4) {
+    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
+    int remaining_space = context->jit_write_buffer_len - jit_length;
+    if (remaining_space < 4) {
+        context->jit_write_buffer_overflow = true;
+        return;
+    }
+    *(context->jit_write_ptr++) = byte1;
+    *(context->jit_write_ptr++) = byte2;
+    *(context->jit_write_ptr++) = byte3;
+    *(context->jit_write_ptr++) = byte4;
+}
+
+void je_jit_emit_bytes_8(je_context_t* context, uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4, uint8_t byte5, uint8_t byte6, uint8_t byte7, uint8_t byte8) {
+    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
+    int remaining_space = context->jit_write_buffer_len - jit_length;
+    if (remaining_space < 8) {
+        context->jit_write_buffer_overflow = true;
+        return;
+    }
+    *(context->jit_write_ptr++) = byte1;
+    *(context->jit_write_ptr++) = byte2;
+    *(context->jit_write_ptr++) = byte3;
+    *(context->jit_write_ptr++) = byte4;
+    *(context->jit_write_ptr++) = byte5;
+    *(context->jit_write_ptr++) = byte6;
+    *(context->jit_write_ptr++) = byte7;
+    *(context->jit_write_ptr++) = byte8;
+}
+
+void je_jit_emit_bytes(je_context_t* context, uint8_t* bytes, uint32_t length) {
+    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
+    int remaining_space = context->jit_write_buffer_len - jit_length;
+    if (remaining_space < (int)length) {
+        context->jit_write_buffer_overflow = true;
+        return;
+    }
+    for (int i = 0; i < (int)length; i++) {
+        *(context->jit_write_ptr++) = bytes[i];
+    }
+}
+
+void je_jit_start_instruction(je_context_t* context) {
+    context->jit_instruction_start = context->jit_write_ptr;
+}
+
+void je_jit_end_instruction(je_context_t* context, const char* mnemonic, ...) {
+    if (context->flags & JE_FLAG_DEBUG_JIT_DISASSEMBLY) {
+        int instruction_length = (int)(context->jit_write_ptr - context->jit_instruction_start);
+
+        char buffer[128];
+        va_list va;
+        va_start(va, mnemonic);
+        vsnprintf(buffer, sizeof(buffer), mnemonic, va);
+        va_end(va);
+
+        printf("\t");
+        for (int i = 0; i < 12; i++) {
+            if (i >= instruction_length) { 
+                printf("   ");
+            } else {
+                printf("%s%02x", i == 0 ? "" : " ", *(uint8_t*)(context->jit_instruction_start + i));
+            }
+        }
+        printf("%s\n", buffer);
+    }
+
+    context->jit_instruction_num++;
+}
+
+// -----------------------------------------------------------------------
 // X86 / X64 JIT
 // -----------------------------------------------------------------------
 
@@ -4155,6 +4293,73 @@ int je_jit_x86_alloc_alu_reg(je_context_t* context);
 int je_jit_x86_alloc_xmm_reg(je_context_t* context);
 void je_jit_x86_free_reg(je_context_t* context, int reg);
 
+const char* je_jit_x86_reg_name(int reg, int width) {
+#ifdef JE_ISA_X86
+    if (width == 64) {
+        width = 32;
+    }
+#endif
+    switch (reg) {        
+        case JE_JIT_X86_REG_EAX: {
+            if (width == 8)         return "al";
+            else if (width == 16)   return "ax";
+            else if (width == 32)   return "eax";
+            else if (width == 64)   return "rax";
+        }
+        case JE_JIT_X86_REG_ECX: {
+            if (width == 8)         return "cl";
+            else if (width == 16)   return "cx";
+            else if (width == 32)   return "ecx";
+            else if (width == 64)   return "rcx";
+        }
+        case JE_JIT_X86_REG_EDX: {
+            if (width == 8)         return "dl";
+            else if (width == 16)   return "dx";
+            else if (width == 32)   return "edx";
+            else if (width == 64)   return "rdx";
+        }
+        case JE_JIT_X86_REG_EBX: {
+            if (width == 8)         return "bl";
+            else if (width == 16)   return "bx";
+            else if (width == 32)   return "ebx";
+            else if (width == 64)   return "rbx";
+        }
+        case JE_JIT_X86_REG_ESP: {
+            if (width == 8)         return "spl";
+            else if (width == 16)   return "sp";
+            else if (width == 32)   return "esp";
+            else if (width == 64)   return "rsp";
+        }
+        case JE_JIT_X86_REG_EBP: {
+            if (width == 8)         return "bpl";
+            else if (width == 16)   return "bp";
+            else if (width == 32)   return "ebp";
+            else if (width == 64)   return "rbp";
+        }
+        case JE_JIT_X86_REG_ESI: {
+            if (width == 8)         return "sil";
+            else if (width == 16)   return "si";
+            else if (width == 32)   return "esi";
+            else if (width == 64)   return "rsi";
+        }
+        case JE_JIT_X86_REG_EDI: {
+            if (width == 8)         return "dil";
+            else if (width == 16)   return "di";
+            else if (width == 32)   return "edi";
+            else if (width == 64)   return "rdi";
+        }
+        case JE_JIT_X86_REG_XMM0: return "xmm0";
+        case JE_JIT_X86_REG_XMM1: return "xmm1";
+        case JE_JIT_X86_REG_XMM2: return "xmm2";
+        case JE_JIT_X86_REG_XMM3: return "xmm3";
+        case JE_JIT_X86_REG_XMM4: return "xmm4";
+        case JE_JIT_X86_REG_XMM5: return "xmm5";
+        case JE_JIT_X86_REG_XMM6: return "xmm6";
+        case JE_JIT_X86_REG_XMM7: return "xmm7";
+    }
+    return "unknown-register";
+}
+
 int je_compile_jit(je_context_t* context) {
     int ret;
     
@@ -4193,82 +4398,19 @@ void je_jit_free(je_context_t* context) {
     je_free_executable(context, context->jit_executable_memory, context->jit_code_bytes);
 }
 
-void je_jit_x86_emit_bytes_1(je_context_t* context, uint8_t byte1) {
-    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
-    int remaining_space = context->jit_write_buffer_len - jit_length;
-    if (remaining_space < 1) {
-        context->jit_write_buffer_overflow = true;
-        return;
-    }
-    *(context->jit_write_ptr++) = byte1;
-}
-
-void je_jit_x86_emit_bytes_2(je_context_t* context, uint8_t byte1, uint8_t byte2) {
-    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
-    int remaining_space = context->jit_write_buffer_len - jit_length;
-    if (remaining_space < 2) {
-        context->jit_write_buffer_overflow = true;
-        return;
-    }
-    *(context->jit_write_ptr++) = byte1;
-    *(context->jit_write_ptr++) = byte2;
-}
-
-void je_jit_x86_emit_bytes_3(je_context_t* context, uint8_t byte1, uint8_t byte2, uint8_t byte3) {
-    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
-    int remaining_space = context->jit_write_buffer_len - jit_length;
-    if (remaining_space < 3) {
-        context->jit_write_buffer_overflow = true;
-        return;
-    }
-    *(context->jit_write_ptr++) = byte1;
-    *(context->jit_write_ptr++) = byte2;
-    *(context->jit_write_ptr++) = byte3;
-}
-
-void je_jit_x86_emit_bytes_4(je_context_t* context, uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4) {
-    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
-    int remaining_space = context->jit_write_buffer_len - jit_length;
-    if (remaining_space < 4) {
-        context->jit_write_buffer_overflow = true;
-        return;
-    }
-    *(context->jit_write_ptr++) = byte1;
-    *(context->jit_write_ptr++) = byte2;
-    *(context->jit_write_ptr++) = byte3;
-    *(context->jit_write_ptr++) = byte4;
-}
-
-void je_jit_x86_emit_bytes_8(je_context_t* context, uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4, uint8_t byte5, uint8_t byte6, uint8_t byte7, uint8_t byte8) {
-    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
-    int remaining_space = context->jit_write_buffer_len - jit_length;
-    if (remaining_space < 8) {
-        context->jit_write_buffer_overflow = true;
-        return;
-    }
-    *(context->jit_write_ptr++) = byte1;
-    *(context->jit_write_ptr++) = byte2;
-    *(context->jit_write_ptr++) = byte3;
-    *(context->jit_write_ptr++) = byte4;
-    *(context->jit_write_ptr++) = byte5;
-    *(context->jit_write_ptr++) = byte6;
-    *(context->jit_write_ptr++) = byte7;
-    *(context->jit_write_ptr++) = byte8;
-}
-
 void je_jit_x86_emit_imm8(je_context_t* context, uint8_t immediate) {
     uint8_t* bytes = (uint8_t*)&immediate;
-    je_jit_x86_emit_bytes_1(context, bytes[0]);
+    je_jit_emit_bytes_1(context, bytes[0]);
 }
 
 void je_jit_x86_emit_imm32(je_context_t* context, int immediate) {
     uint8_t* bytes = (uint8_t*)&immediate;
-    je_jit_x86_emit_bytes_4(context, bytes[0], bytes[1], bytes[2], bytes[3]);
+    je_jit_emit_bytes_4(context, bytes[0], bytes[1], bytes[2], bytes[3]);
 }
 
 void je_jit_x86_emit_imm64(je_context_t* context, uint64_t immediate) {
     uint8_t* bytes = (uint8_t*)&immediate;
-    je_jit_x86_emit_bytes_8(context, bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]);
+    je_jit_emit_bytes_8(context, bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]);
 }
 
 uint8_t je_jit_x86_encode_modrm(int mod, int reg, int rm) {
@@ -4290,31 +4432,36 @@ uint8_t je_jit_x86_encode_rex(int w, int r, int x, int b) {
 }
 
 void je_jit_x86_emit_nop(je_context_t* context) {
-    je_jit_x86_emit_bytes_1(context, 0x90); // nop
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_1(context, 0x90); // nop
+    je_jit_end_instruction(context, "nop");
 }
 
 void je_jit_x86_emit_ret(je_context_t* context) {
-    je_jit_x86_emit_bytes_1(context, 0xC3); // ret
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_1(context, 0xC3); // ret
+    je_jit_end_instruction(context, "ret");
 }
 
 void je_jit_x86_emit_pop_r32(je_context_t* context, int src) {
-    je_jit_x86_emit_bytes_1(context, 0x58 + src); // POP r64/16
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_1(context, 0x58 + src); // POP r64/16
+    je_jit_end_instruction(context, "pop %s", je_jit_x86_reg_name(src, 64));
     context->jit_stack_bytes -= 4;
 }
 
 void je_jit_x86_emit_push_r32(je_context_t* context, int src) {
-    je_jit_x86_emit_bytes_1(context, 0x50 + src); // PUSH r64/16
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_1(context, 0x50 + src); // PUSH r64/16
+    je_jit_end_instruction(context, "push %s", je_jit_x86_reg_name(src, 32));
     context->jit_stack_bytes += 4;
 }
 
 void je_jit_x86_emit_push_imm32(je_context_t* context, int imm32) {
-    je_jit_x86_emit_bytes_1(context, 0x68); // PUSH imm32
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_1(context, 0x68); // PUSH imm32
     je_jit_x86_emit_imm32(context, imm32);
-    context->jit_instruction_num++;
+    je_jit_end_instruction(context, "push 0x%08x", imm32);
     context->jit_stack_bytes += 4;
 }
 
@@ -4322,8 +4469,9 @@ void je_jit_x86_emit_push_r64(je_context_t* context, int src) {
     uint8_t rex_byte = je_jit_x86_encode_rex(1, 0, 0, 0);
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x6, src);
     uint8_t opcode_byte = 0xFF; // PUSH  r/m64/16
-    je_jit_x86_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "push %s", je_jit_x86_reg_name(src, 64));
     context->jit_stack_bytes += 8;
 }
 
@@ -4331,308 +4479,348 @@ void je_jit_x86_emit_pop_r64(je_context_t* context, int src) {
     uint8_t rex_byte = je_jit_x86_encode_rex(1, 0, 0, 0);
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x0, src);
     uint8_t opcode_byte = 0x8F; // POP r/m64/16
-    je_jit_x86_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "pop %s", je_jit_x86_reg_name(src, 64));
     context->jit_stack_bytes -= 8;
 }
 
 void je_jit_x86_emit_add_r32_r32(je_context_t* context, int dst, int src) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, src, dst);
     uint8_t opcode_byte = 0x01; // ADD r/m16/32/64 r16/32/64
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "add %s, %s", je_jit_x86_reg_name(dst, 32), je_jit_x86_reg_name(src, 32));
 }
 
 void je_jit_x86_emit_add_r32_imm32(je_context_t* context, int dst, int imm32) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0, dst);
     uint8_t opcode_byte = 0x81; // ADD r/m16/32/64 imm16/32
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
     je_jit_x86_emit_imm32(context, imm32);
-    context->jit_instruction_num++;
+    je_jit_end_instruction(context, "to-implement");
 }
 
 void je_jit_x86_emit_add_r64_imm32(je_context_t* context, int dst, int imm32) {
     uint8_t rex_byte = je_jit_x86_encode_rex(1, 0, 0, 0);
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0, dst);
     uint8_t opcode_byte = 0x81; // ADD r/m16/32/64 imm16/32
-    je_jit_x86_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
     je_jit_x86_emit_imm32(context, imm32);
-    context->jit_instruction_num++;
+    je_jit_end_instruction(context, "to-implement");
 }
 
 void je_jit_x86_emit_sub_r32_imm32(je_context_t* context, int dst, int imm32) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 5, dst);
     uint8_t opcode_byte = 0x81; // SUB r/m16/32/64 imm16/32
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
     je_jit_x86_emit_imm32(context, imm32);
-    context->jit_instruction_num++;
+    je_jit_end_instruction(context, "to-implement");
 }
 
 void je_jit_x86_emit_sub_r64_imm32(je_context_t* context, int dst, int imm32) {
     uint8_t rex_byte = je_jit_x86_encode_rex(1, 0, 0, 0);
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 5, dst);
     uint8_t opcode_byte = 0x81; // SUB r/m16/32/64 imm16/32
-    je_jit_x86_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
     je_jit_x86_emit_imm32(context, imm32);
-    context->jit_instruction_num++;
+    je_jit_end_instruction(context, "to-implement");
 }
 
 void je_jit_x86_emit_sub_r32_r32(je_context_t* context, int dst, int src) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, src, dst);
     uint8_t opcode_byte = 0x29; // SUB r/m16/32/64 r16/32/64
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "sub %s, %s", je_jit_x86_reg_name(dst, 32), je_jit_x86_reg_name(src, 32));
 }
 
 void je_jit_x86_emit_imul_r32_r32(je_context_t* context, int dst, int src) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, dst, src);
     uint8_t prefix_byte = 0x0F;
-    uint8_t opcode_byte = 0xAF; // IMUL r16/32/64 r/m16/32/64 	
-    je_jit_x86_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    uint8_t opcode_byte = 0xAF; // IMUL r16/32/64 r/m16/32/64 
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "imul %s, %s", je_jit_x86_reg_name(dst, 32), je_jit_x86_reg_name(src, 32));
 }
 
 void je_jit_x86_emit_mov_r32_imm32(je_context_t* context, int dst, int imm32) {
     uint8_t opcode_byte = 0xB8 + dst; // MOV r16/32/64 imm16/32/64
-    je_jit_x86_emit_bytes_1(context, opcode_byte);
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_1(context, opcode_byte);
     je_jit_x86_emit_imm32(context, imm32);
-    context->jit_instruction_num++;
+    je_jit_end_instruction(context, "mov %s, 0x%08x", je_jit_x86_reg_name(dst, 32), imm32);
 }
 
 void je_jit_x86_emit_mov_r32_r32(je_context_t* context, int dst, int src) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, dst, src);
     uint8_t opcode_byte = 0x8B; // MOV r16/32/64 r/m16/32/64
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "mov %s, %s", je_jit_x86_reg_name(dst, 32), je_jit_x86_reg_name(src, 32));
 }
 
 void je_jit_x86_emit_mov_r64_r64(je_context_t* context, int dst, int src) {
     uint8_t rex_byte = je_jit_x86_encode_rex(1, 0, 0, 0);
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, dst, src);
     uint8_t opcode_byte = 0x8B; // MOV r16/32/64 r/m16/32/64
-    je_jit_x86_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "mov %s, %s", je_jit_x86_reg_name(dst, 64), je_jit_x86_reg_name(src, 64));
 }
 
 void je_jit_x86_emit_mov_r64_imm64(je_context_t* context, int dst, uint64_t imm64) {
     uint8_t rex_byte = je_jit_x86_encode_rex(1, 0, 0, 0);
     uint8_t opcode_byte = 0xB8 + dst; // MOV r16/32/64 imm16/32/64
-    je_jit_x86_emit_bytes_2(context, rex_byte, opcode_byte);
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, rex_byte, opcode_byte);
     je_jit_x86_emit_imm64(context, imm64);
-    context->jit_instruction_num++;
+    je_jit_end_instruction(context, "movabs %s, 0x%016llx", je_jit_x86_reg_name(dst, 64), imm64);
 }
 
 void je_jit_x86_emit_mov_r32_direct_r64_addr(je_context_t* context, int dst, int src) {    
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_MEMORY_ADDRESSING_NO_DISPLACEMENT, dst, src);
     uint8_t opcode_byte = 0x8B; // MOV r16/32/64 r/m16/32/64
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "mov %s, dword ptr [%s]", je_jit_x86_reg_name(dst, 32), je_jit_x86_reg_name(src, 64));
 }
 
 void je_jit_x86_emit_mov_r64_direct_r64_addr(je_context_t* context, int dst, int src) {
     uint8_t rex_byte = je_jit_x86_encode_rex(1, 0, 0, 0);
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_MEMORY_ADDRESSING_NO_DISPLACEMENT, dst, src);
     uint8_t opcode_byte = 0x8B; // MOV r16/32/64 r/m16/32/64
-    je_jit_x86_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "mov %s, qword ptr [%s]", je_jit_x86_reg_name(dst, 64), je_jit_x86_reg_name(src, 64));
 }
 
 void je_jit_x86_emit_mov_r64_addr_r32_direct(je_context_t* context, int dst, int src) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_MEMORY_ADDRESSING_NO_DISPLACEMENT, src, dst);
     uint8_t opcode_byte = 0x89; // MOV r/m16/32/64 r16/32/64
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "mov dword ptr [%s], %s", je_jit_x86_reg_name(dst, 64), je_jit_x86_reg_name(src, 32));
 }
 
 void je_jit_x86_emit_mov_r64_addr_r64_direct(je_context_t* context, int dst, int src) {
     uint8_t rex_byte = je_jit_x86_encode_rex(1, 0, 0, 0);
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_MEMORY_ADDRESSING_NO_DISPLACEMENT, src, dst);
     uint8_t opcode_byte = 0x89; // MOV r/m16/32/64 r16/32/64
-    je_jit_x86_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "mov qword ptr [%s], %s", je_jit_x86_reg_name(dst, 64), je_jit_x86_reg_name(src, 32));
 }
 
 void je_jit_x86_emit_mov_r32_direct_r32_addr(je_context_t* context, int dst, int src) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_MEMORY_ADDRESSING_NO_DISPLACEMENT, dst, src);
     uint8_t opcode_byte = 0x8B; // MOV r16/32/64 r/m16/32/64
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "to-implement");
 }
 
 void je_jit_x86_emit_mov_r32_addr_r32_direct(je_context_t* context, int dst, int src) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_MEMORY_ADDRESSING_NO_DISPLACEMENT, src, dst);
     uint8_t opcode_byte = 0x89; // MOV r/m16/32/64 r16/32/64
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "to-implement");
 }
 
 void je_jit_x86_emit_idiv_eax_r32(je_context_t* context, int src) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x7, src);
     uint8_t opcode_byte = 0xF7; // IDIV rDX rAX r/m16/32/64
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "idiv %s", je_jit_x86_reg_name(src, 32));
 }
 
 void je_jit_x86_emit_xor_r32_r32(je_context_t* context, int dst, int src) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, src, dst);
     uint8_t opcode_byte = 0x31; // XOR r/m16/32/64 	r16/32/64
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "xor %s, %s", je_jit_x86_reg_name(dst, 32), je_jit_x86_reg_name(src, 32));
 }
 
 void je_jit_x86_emit_not_r32(je_context_t* context, int dst) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x2, dst);
     uint8_t opcode_byte = 0xF7; // NOT r/m16/32/64
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "not %s", je_jit_x86_reg_name(dst, 32));
 }
 
 void je_jit_x86_emit_and_r32_r32(je_context_t* context, int dst, int src) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, dst, src);
     uint8_t opcode_byte = 0x23; // AND r16/32/64 r/m16/32/64
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "and %s, %s", je_jit_x86_reg_name(dst, 32), je_jit_x86_reg_name(src, 32));
 }
 
 void je_jit_x86_emit_and_r32_imm32(je_context_t* context, int dst, uint32_t imm32) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0, dst);
     uint8_t opcode_byte = 0x81; // AND r/m16/32/64 imm16/32
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
     je_jit_x86_emit_imm32(context, imm32);
-    context->jit_instruction_num++;
+    je_jit_end_instruction(context, "to-implement");
 }
 
 void je_jit_x86_emit_and_r64_imm64_sign_extended(je_context_t* context, int dst, uint32_t imm32) {
     uint8_t rex_byte = je_jit_x86_encode_rex(1, 0, 0, 0);
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0, dst);
     uint8_t opcode_byte = 0x81; // AND r/m16/32/64 imm16/32
-    je_jit_x86_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
     je_jit_x86_emit_imm32(context, imm32);
-    context->jit_instruction_num++;
+    je_jit_end_instruction(context, "add %s, 0x%08x", je_jit_x86_reg_name(dst, 64), imm32);
 }
 
 void je_jit_x86_emit_or_r32_r32(je_context_t* context, int dst, int src) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, dst, src);
     uint8_t opcode_byte = 0x0B; // OR r16/32/64 r/m16/32/64
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "or %s, %s", je_jit_x86_reg_name(dst, 32), je_jit_x86_reg_name(src, 32));
 }
 
 void je_jit_x86_emit_neg_r32(je_context_t* context, int dst) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x3, dst);
     uint8_t opcode_byte = 0xF7; // NEG r/m16/32/64
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "neg %s", je_jit_x86_reg_name(dst, 32));
 }
 
 void je_jit_x86_emit_cmp_r32_r32(je_context_t* context, int dst, int src) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, dst, src);
     uint8_t opcode_byte = 0x3B; // CMP r16/32/64 r/m16/32/64
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "cmp %s, %s", je_jit_x86_reg_name(dst, 32), je_jit_x86_reg_name(src, 32));
 }
 
 void je_jit_x86_emit_cmp_r32_imm32(je_context_t* context, int dst, int imm32) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x7, dst);
     uint8_t opcode_byte = 0x81; // CMP r/m16/32/64 imm16/32
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
     je_jit_x86_emit_imm32(context, imm32);
-    context->jit_instruction_num++;
+    je_jit_end_instruction(context, "cmp %s, 0x%08x", je_jit_x86_reg_name(dst, 32), imm32 );
 }
 
 void je_jit_x86_emit_setl_r8(je_context_t* context, int dst) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x0, dst);
     uint8_t prefix_byte = 0x0F;
     uint8_t opcode_byte = 0x9C; // SETL r/m8
-    je_jit_x86_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "setl %s", je_jit_x86_reg_name(dst, 8));
 }
 
 void je_jit_x86_emit_setle_r8(je_context_t* context, int dst) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x0, dst);
     uint8_t prefix_byte = 0x0F;
     uint8_t opcode_byte = 0x9E; // SETLE r/m8
-    je_jit_x86_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "setle %s", je_jit_x86_reg_name(dst, 8));
 }
 
 void je_jit_x86_emit_setg_r8(je_context_t* context, int dst) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x0, dst);
     uint8_t prefix_byte = 0x0F;
     uint8_t opcode_byte = 0x9F; // SETG r/m8
-    je_jit_x86_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "setg %s", je_jit_x86_reg_name(dst, 8));
 }
 
 void je_jit_x86_emit_setge_r8(je_context_t* context, int dst) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x0, dst);
     uint8_t prefix_byte = 0x0F;
     uint8_t opcode_byte = 0x9D; // SETGE r/m8
-    je_jit_x86_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "setge %s", je_jit_x86_reg_name(dst, 8));
 }
 
 void je_jit_x86_emit_setb_r8(je_context_t* context, int dst) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x0, dst);
     uint8_t prefix_byte = 0x0F;
     uint8_t opcode_byte = 0x92; // SETB r/m8
-    je_jit_x86_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "setb %s", je_jit_x86_reg_name(dst, 8));
 }
 
 void je_jit_x86_emit_setbe_r8(je_context_t* context, int dst) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x0, dst);
     uint8_t prefix_byte = 0x0F;
     uint8_t opcode_byte = 0x96; // SETBE r/m8
-    je_jit_x86_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "setbe %s", je_jit_x86_reg_name(dst, 8));
 }
 
 void je_jit_x86_emit_seta_r8(je_context_t* context, int dst) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x0, dst);
     uint8_t prefix_byte = 0x0F;
     uint8_t opcode_byte = 0x97; // SETA r/m8
-    je_jit_x86_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "seta %s", je_jit_x86_reg_name(dst, 8));
 }
 
 void je_jit_x86_emit_setae_r8(je_context_t* context, int dst) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x0, dst);
     uint8_t prefix_byte = 0x0F;
     uint8_t opcode_byte = 0x93; // SETAE r/m8
-    je_jit_x86_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "setae %s", je_jit_x86_reg_name(dst, 8));
 }
 
 void je_jit_x86_emit_sete_r8(je_context_t* context, int dst) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x0, dst);
     uint8_t prefix_byte = 0x0F;
     uint8_t opcode_byte = 0x94; // SETE r/m8
-    je_jit_x86_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "sete %s", je_jit_x86_reg_name(dst, 8));
 }
 
 void je_jit_x86_emit_setne_r8(je_context_t* context, int dst) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x0, dst);
     uint8_t prefix_byte = 0x0F;
     uint8_t opcode_byte = 0x95; // SETNE r/m8
-    je_jit_x86_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, prefix_byte, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "setna %s", je_jit_x86_reg_name(dst, 8));
 }
 
 void je_jit_x86_emit_call(je_context_t* context, int addr_reg) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, 0x2, addr_reg);
     uint8_t opcode_byte = 0xFF; // CALL r/m64
-    je_jit_x86_emit_bytes_2(context, opcode_byte, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
+    je_jit_end_instruction(context, "call %s", je_jit_x86_reg_name(addr_reg, 32));
 }
 
 void je_jit_x86_emit_xorps_xmm32_xmm32(je_context_t* context, int reg1, int reg2) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, reg1 - JE_JIT_X86_REG_XMM0, reg2 - JE_JIT_X86_REG_XMM0);
     uint8_t opcode_byte1 = 0x0F;
     uint8_t opcode_byte2 = 0x57; // XORPS xmm xmm/m128
-    je_jit_x86_emit_bytes_3(context, opcode_byte1, opcode_byte2, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, opcode_byte1, opcode_byte2, modrm_byte);
+    je_jit_end_instruction(context, "xorps %s, %s", je_jit_x86_reg_name(reg1, 32), je_jit_x86_reg_name(reg2, 32));
 }
 
 void je_jit_x86_emit_addss_xmm32_xmm32(je_context_t* context, int reg1, int reg2) {
@@ -4640,8 +4828,9 @@ void je_jit_x86_emit_addss_xmm32_xmm32(je_context_t* context, int reg1, int reg2
     uint8_t rep_prefix = 0xF3;
     uint8_t opcode_byte1 = 0x0F;
     uint8_t opcode_byte2 = 0x58; // ADDSS xmm xmm/m32	
-    je_jit_x86_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
+    je_jit_end_instruction(context, "addss %s, %s", je_jit_x86_reg_name(reg1, 32), je_jit_x86_reg_name(reg2, 32));
 }
 
 void je_jit_x86_emit_subss_xmm32_xmm32(je_context_t* context, int reg1, int reg2) {
@@ -4649,8 +4838,9 @@ void je_jit_x86_emit_subss_xmm32_xmm32(je_context_t* context, int reg1, int reg2
     uint8_t rep_prefix = 0xF3;
     uint8_t opcode_byte1 = 0x0F;
     uint8_t opcode_byte2 = 0x5C; // SUBSS xmm xmm/m32	
-    je_jit_x86_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
+    je_jit_end_instruction(context, "subss %s, %s", je_jit_x86_reg_name(reg1, 32), je_jit_x86_reg_name(reg2, 32));
 }
 
 void je_jit_x86_emit_mulss_xmm32_xmm32(je_context_t* context, int reg1, int reg2) {
@@ -4658,8 +4848,9 @@ void je_jit_x86_emit_mulss_xmm32_xmm32(je_context_t* context, int reg1, int reg2
     uint8_t rep_prefix = 0xF3;
     uint8_t opcode_byte1 = 0x0F;
     uint8_t opcode_byte2 = 0x59; // MULSS xmm xmm/m32	
-    je_jit_x86_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
+    je_jit_end_instruction(context, "mulss %s, %s", je_jit_x86_reg_name(reg1, 32), je_jit_x86_reg_name(reg2, 32));
 }
 
 void je_jit_x86_emit_divss_xmm32_xmm32(je_context_t* context, int reg1, int reg2) {
@@ -4667,16 +4858,18 @@ void je_jit_x86_emit_divss_xmm32_xmm32(je_context_t* context, int reg1, int reg2
     uint8_t rep_prefix = 0xF3;
     uint8_t opcode_byte1 = 0x0F;
     uint8_t opcode_byte2 = 0x5E; // DIVSS xmm xmm/m32	
-    je_jit_x86_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
+    je_jit_end_instruction(context, "divss %s, %s", je_jit_x86_reg_name(reg1, 32), je_jit_x86_reg_name(reg2, 32));
 }
 
 void je_jit_x86_emit_comiss_xmm32_xmm32(je_context_t* context, int reg1, int reg2) {
     uint8_t modrm_byte = je_jit_x86_encode_modrm(JE_JIT_X86_REGISTER_DIRECT_ADDRESSING, reg1 - JE_JIT_X86_REG_XMM0, reg2 - JE_JIT_X86_REG_XMM0);
     uint8_t opcode_byte1 = 0x0F;
     uint8_t opcode_byte2 = 0x2F; // COMISS xmm xmm/m32
-    je_jit_x86_emit_bytes_3(context, opcode_byte1, opcode_byte2, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_3(context, opcode_byte1, opcode_byte2, modrm_byte);
+    je_jit_end_instruction(context, "comiss %s, %s", je_jit_x86_reg_name(reg1, 32), je_jit_x86_reg_name(reg2, 32));
 }
 
 void je_jit_x86_emit_movss_xmm32_r32(je_context_t* context, int dst, int src) {
@@ -4684,9 +4877,10 @@ void je_jit_x86_emit_movss_xmm32_r32(je_context_t* context, int dst, int src) {
     uint8_t rep_prefix = 0xF3;
     uint8_t opcode_byte1 = 0x0F;
     uint8_t opcode_byte2 = 0x10; // movss xmm xmm/m32
+    je_jit_start_instruction(context);
     // where is dst set
-    je_jit_x86_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
+    je_jit_end_instruction(context, "movss %s, dword ptr [%s]", je_jit_x86_reg_name(dst, 32), je_jit_x86_reg_name(src, 64));
 }
 
 void je_jit_x86_emit_movss_r32_xmm32(je_context_t* context, int dst, int src) {
@@ -4694,8 +4888,9 @@ void je_jit_x86_emit_movss_r32_xmm32(je_context_t* context, int dst, int src) {
     uint8_t rep_prefix = 0xF3;
     uint8_t opcode_byte1 = 0x0F;
     uint8_t opcode_byte2 = 0x11; // movss xmm/m32 xmm
-    je_jit_x86_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
+    je_jit_end_instruction(context, "movss dword ptr [%s], %s", je_jit_x86_reg_name(dst, 32), je_jit_x86_reg_name(src, 64));
 }
 
 void je_jit_x86_emit_cvtsi2ss_xmm32_r32(je_context_t* context, int dst, int src) {
@@ -4703,8 +4898,9 @@ void je_jit_x86_emit_cvtsi2ss_xmm32_r32(je_context_t* context, int dst, int src)
     uint8_t rep_prefix = 0xF3;
     uint8_t opcode_byte1 = 0x0F;
     uint8_t opcode_byte2 = 0x2A; // CVTSI2SS xmm r/m32/64
-    je_jit_x86_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
+    je_jit_end_instruction(context, "cvtsi2ss %s, %s", je_jit_x86_reg_name(dst, 32), je_jit_x86_reg_name(src, 32));
 }
 
 void je_jit_x86_emit_cvtss2si_r32_xmm32(je_context_t* context, int dst, int src) {
@@ -4712,8 +4908,9 @@ void je_jit_x86_emit_cvtss2si_r32_xmm32(je_context_t* context, int dst, int src)
     uint8_t rep_prefix = 0xF3;
     uint8_t opcode_byte1 = 0x0F;
     uint8_t opcode_byte2 = 0x2C; // CVTTSS2SI r32/64 xmm/m32
-    je_jit_x86_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes_4(context, rep_prefix, opcode_byte1, opcode_byte2, modrm_byte);
+    je_jit_end_instruction(context, "cvttss2si %s, %s", je_jit_x86_reg_name(dst, 32), je_jit_x86_reg_name(src, 32));
 }
 
 int je_jit_x86_alloc_exact_reg(je_context_t* context, int reg) {
@@ -4826,6 +5023,7 @@ bool je_jit_x86_reg_allocated(je_context_t* context, int reg) {
 }
 
 void je_jit_x86_emit_prologue(je_context_t* context) {
+    je_jit_emit_comment(context, "Prologue");
 #if defined(JE_CALLING_CONVENTION_MSVC)
     // In theory we are meant to store volatile registers here, but with the way
     // we do JIT, I don't think we have an occassion where thats actually needed.
@@ -4841,6 +5039,7 @@ void je_jit_x86_emit_prologue(je_context_t* context) {
 }
 
 void je_jit_x86_emit_epilogue(je_context_t* context, int return_reg) {
+    je_jit_emit_comment(context, "Epilogue");
     // Move the return value to the result struct.
     context->result.type = context->ast_root->return_type;
     switch (context->ast_root->return_type) {
@@ -4916,7 +5115,10 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     for (int i = 0; i < function->param_count; i++) {
         je_ast_node_t* child = je_get_node_child(context, node, i);
         int reg1 = je_jit_x86_emit_node(context, child);
-        switch (je_get_func_param_type(context, function, i)) {
+        int type = je_get_func_param_type(context, function, i);
+
+        je_jit_emit_comment(context, "Storing %s parameter %i", je_type_name(type), i);
+        switch (type) {
             case JE_TYPE_INT: {
                 int addr_reg = je_jit_x86_alloc_alu_reg(context);
 #ifdef JE_ISA_X64
@@ -4986,26 +5188,31 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EDX);
 
     // Ensure stack is aligned.
+    je_jit_emit_comment(context, "Stack alignment");
     je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EBP);
     je_jit_x86_emit_mov_r64_r64(context, JE_JIT_X86_REG_EBP, JE_JIT_X86_REG_ESP);
     je_jit_x86_emit_and_r64_imm64_sign_extended(context, JE_JIT_X86_REG_ESP, 0xFFFFFFF0);
 
     // Store the active_function pointer
+    je_jit_emit_comment(context, "Storing active_function");
     uint64_t address = (uint64_t)&context->active_function;
     je_jit_x86_emit_mov_r64_imm64(context, JE_JIT_X86_REG_ECX, address);
     je_jit_x86_emit_mov_r64_imm64(context, JE_JIT_X86_REG_EDX, (uint64_t)function);
     je_jit_x86_emit_mov_r64_addr_r64_direct(context, JE_JIT_X86_REG_ECX, JE_JIT_X86_REG_EDX);
 
     // Push the context agument (first integer argumnet goes to ECX under MSVC).
+    je_jit_emit_comment(context, "Passing context argument");
     address = (uint64_t)context;
     je_jit_x86_emit_mov_r64_imm64(context, JE_JIT_X86_REG_ECX, address);
     // Call function
+    je_jit_emit_comment(context, "Calling function");
     address = (uint64_t)function->function;
     je_jit_x86_emit_mov_r64_imm64(context, JE_JIT_X86_REG_EDX, address);
     je_jit_x86_emit_call(context, JE_JIT_X86_REG_EDX);
     je_jit_x86_emit_nop(context);
 
     // Restore alignment.
+    je_jit_emit_comment(context, "Restore stack alignment");
     je_jit_x86_emit_mov_r64_r64(context, JE_JIT_X86_REG_ESP, JE_JIT_X86_REG_EBP);
     je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EBP);
 
@@ -5018,21 +5225,25 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     je_jit_x86_emit_push_r32(context, JE_JIT_X86_REG_EDX);
 
     // Ensure stack is aligned.
+    je_jit_emit_comment(context, "Stack alignment");
     je_jit_x86_emit_push_r32(context, JE_JIT_X86_REG_EBP);
     je_jit_x86_emit_mov_r32_r32(context, JE_JIT_X86_REG_EBP, JE_JIT_X86_REG_ESP);
     je_jit_x86_emit_and_r32_imm32(context, JE_JIT_X86_REG_ESP, 0xFFFFFFF0);
 
     // Store the active_function pointer
+    je_jit_emit_comment(context, "Storing active_function");
     uint32_t address = (uint32_t)&context->active_function;
     je_jit_x86_emit_mov_r32_imm32(context, JE_JIT_X86_REG_ECX, address);
     je_jit_x86_emit_mov_r32_imm32(context, JE_JIT_X86_REG_EDX, (uint32_t)function);
     je_jit_x86_emit_mov_r32_addr_r32_direct(context, JE_JIT_X86_REG_ECX, JE_JIT_X86_REG_EDX);
 
     // Push the context agument
+    je_jit_emit_comment(context, "Passing context argument");
     address = (uint32_t)context;
     je_jit_x86_emit_push_imm32(context, address);
 
     // Call function
+    je_jit_emit_comment(context, "Calling function");
     address = (uint32_t)function->function;
     je_jit_x86_emit_mov_r32_imm32(context, JE_JIT_X86_REG_EDX, address);
     je_jit_x86_emit_call(context, JE_JIT_X86_REG_EDX);
@@ -5042,6 +5253,7 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     je_jit_x86_emit_add_r32_imm32(context, JE_JIT_X86_REG_ESP, 4);
 
     // Restore alignment.
+    je_jit_emit_comment(context, "Restore stack alignment");
     je_jit_x86_emit_mov_r32_r32(context, JE_JIT_X86_REG_ESP, JE_JIT_X86_REG_EBP);
     je_jit_x86_emit_pop_r32(context, JE_JIT_X86_REG_EBP);
 
@@ -5054,26 +5266,31 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EDX);
 
     // Ensure stack is aligned.
+    je_jit_emit_comment(context, "Stack alignment");
     je_jit_x86_emit_push_r64(context, JE_JIT_X86_REG_EBP);
     je_jit_x86_emit_mov_r64_r64(context, JE_JIT_X86_REG_EBP, JE_JIT_X86_REG_ESP);
     je_jit_x86_emit_and_r64_imm64_sign_extended(context, JE_JIT_X86_REG_ESP, 0xFFFFFFF0);
 
     // Store the active_function pointer
+    je_jit_emit_comment(context, "Storing active_function");
     uint64_t address = (uint64_t)&context->active_function;
     je_jit_x86_emit_mov_r64_imm64(context, JE_JIT_X86_REG_ECX, address);
     je_jit_x86_emit_mov_r64_imm64(context, JE_JIT_X86_REG_EDX, (uint64_t)function);
     je_jit_x86_emit_mov_r64_addr_r64_direct(context, JE_JIT_X86_REG_ECX, JE_JIT_X86_REG_EDX);
 
     // Push the context agument (first integer argumnet goes to RDI under SystemV).
+    je_jit_emit_comment(context, "Passing context argument");
     address = (uint64_t)context;
     je_jit_x86_emit_mov_r64_imm64(context, JE_JIT_X86_REG_EDI, address);
     // Call function
+    je_jit_emit_comment(context, "Calling function");
     address = (uint64_t)function->function;
     je_jit_x86_emit_mov_r64_imm64(context, JE_JIT_X86_REG_EDX, address);
     je_jit_x86_emit_call(context, JE_JIT_X86_REG_EDX);
     je_jit_x86_emit_nop(context);
 
     // Restore alignment.
+    je_jit_emit_comment(context, "Restore stack alignment");
     je_jit_x86_emit_mov_r64_r64(context, JE_JIT_X86_REG_ESP, JE_JIT_X86_REG_EBP);
     je_jit_x86_emit_pop_r64(context, JE_JIT_X86_REG_EBP);
 
@@ -5087,6 +5304,7 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     // Move result into return register.
     int ret_reg = 0;
 
+    je_jit_emit_comment(context, "Retrieving %s return value", je_type_name(function->return_type));
     switch (function->return_type) {
         case JE_TYPE_INT: {
             ret_reg = je_jit_x86_alloc_alu_reg(context);
@@ -5155,6 +5373,7 @@ int je_jit_x86_emit_function_call(je_context_t* context, je_ast_node_t* node) {
 
 // Return value is the register the result is in if applicable.
 int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
+    je_jit_emit_comment(context, "%s", je_node_name(node->type));
     switch (node->type) {
         // ------------------------------------------------------------------------------
         // Integer operations
@@ -5773,6 +5992,11 @@ int je_jit_x86_emit_node(je_context_t* context, je_ast_node_t* node) {
 #define JE_JIT_ARM_REG_V30      (62)
 #define JE_JIT_ARM_REG_V31      (63)
 
+// Some misc useful links
+// https://aengelke.net/disarm.html
+// http://163.238.35.161/~zhangs/arm64simulator/
+// https://support.arm.com/documentation/ddi0596/2020-12/Base-Instructions
+
 void je_jit_arm_emit_prologue(je_context_t* context);
 void je_jit_arm_emit_epilogue(je_context_t* context, int result_reg);
 int  je_jit_arm_emit_node(je_context_t* context, je_ast_node_t* node);
@@ -5817,47 +6041,32 @@ void je_jit_free(je_context_t* context) {
     je_free_executable(context, context->jit_executable_memory, context->jit_code_bytes);
 }
 
-void je_jit_arm_emit_instruction(je_context_t* context, uint8_t* instruction, const char* mnemonic) {
-    int jit_length = (int)(context->jit_write_ptr - context->jit_write_buffer);
-    int remaining_space = context->jit_write_buffer_len - jit_length;
-    if (remaining_space < 4) {
-        context->jit_write_buffer_overflow = true;
-        return;
-    }
-    *(context->jit_write_ptr++) = instruction[0];
-    *(context->jit_write_ptr++) = instruction[1];
-    *(context->jit_write_ptr++) = instruction[2];
-    *(context->jit_write_ptr++) = instruction[3];
-
-    printf("%s : 02x 02x 02x 02x\n", mnemonic, instruction[0], instruction[1], instruction[2], instruction[3]);
-}
-
-// CHECKME
 void je_jit_arm_emit_add_sub_imm12(je_context_t* context, int dst, int src, int imm12, bool is_add) {
     struct {
-        uint32_t Rd         : 5;
-        uint32_t Rn         : 5;
-        uint32_t imm12      : 12;
-        uint32_t sh         : 1;
-        uint32_t opcode     : 6;
-        uint32_t S          : 1;
-        uint32_t op         : 1;
-        uint32_t sf         : 1;
+        uint32_t Rd     : 5;
+        uint32_t Rn     : 5;
+        uint32_t imm12  : 12;
+        uint32_t sh     : 1;
+        uint32_t opcode : 6;
+        uint32_t S      : 1;
+        uint32_t op     : 1;
+        uint32_t sf     : 1;
     } bitfield;
     assert(sizeof(bitfield) == 4);
     assert(imm12 < 4096);
 
-    bitfield.sf         = 1;
-    bitfield.op         = is_add ? 0 : 1;
-    bitfield.S          = 0;
-    bitfield.opcode     = 0b10001;
-    bitfield.sh         = 0;
-    bitfield.imm12      = imm12;
-    bitfield.Rn         = src;
     bitfield.Rd         = dst;
+    bitfield.Rn         = src;
+    bitfield.imm12      = imm12;
+    bitfield.sh         = 0;
+    bitfield.opcode     = 0b100010;
+    bitfield.S          = 0;
+    bitfield.op         = is_add ? 0 : 1;
+    bitfield.sf         = 1;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, is_add ? "add" : "sub");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, is_add ? "add x%i, x%i, #%i" : "sub x%i, x%i, #%i", dst, src, imm12);
 }
 
 void je_jit_arm_emit_sub_imm12(je_context_t* context, int dst, int src, int imm12) {
@@ -5868,18 +6077,18 @@ void je_jit_arm_emit_add_imm12(je_context_t* context, int dst, int src, int imm1
     je_jit_arm_emit_add_sub_imm12(context, dst, src, imm12, true);
 }
 
-// CHECKME
 void je_jit_arm_emit_add_sub_r32(je_context_t* context, int dst, int reg1, int reg2, bool is_add) {
     struct {
         uint32_t Rd      : 5;
         uint32_t Rn      : 5;
         uint32_t imm6    : 6;
         uint32_t Rm      : 5;
+        uint32_t fixed1  : 1;
         uint32_t shift   : 2;
         uint32_t opcode  : 5;
         uint32_t S       : 1;
         uint32_t op      : 1;
-        uint32_t sf      : 1; // FIXME: 31 bits
+        uint32_t sf      : 1;
     } bitfield;
     assert(sizeof(bitfield) == 4);
 
@@ -5887,14 +6096,16 @@ void je_jit_arm_emit_add_sub_r32(je_context_t* context, int dst, int reg1, int r
     bitfield.Rn = reg1;
     bitfield.imm6 = 0;
     bitfield.Rm = reg2;
+    bitfield.fixed1 = 0;
     bitfield.shift = 0;
     bitfield.opcode = 0b01011;
     bitfield.S = 0;
     bitfield.op = is_add ? 0 : 1;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, is_add ? "add" : "sub");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, is_add ? "add w%i, w%i, w%i" : "sub w%i, w%i, w%i", dst, reg1, reg2);
 }
 
 void je_jit_arm_emit_sub_r32(je_context_t* context, int dst, int reg1, int reg2) {
@@ -5905,7 +6116,6 @@ void je_jit_arm_emit_add_r32(je_context_t* context, int dst, int reg1, int reg2)
     je_jit_arm_emit_add_sub_r32(context, dst, reg1, reg2, true);
 }
 
-// CHECKME
 void je_jit_arm_emit_ldp_stp_addr(je_context_t* context, int reg1, int reg2, int dst_addr_reg, bool is_load) {
     struct {
         uint32_t Rt     : 5;
@@ -5924,8 +6134,9 @@ void je_jit_arm_emit_ldp_stp_addr(je_context_t* context, int reg1, int reg2, int
     bitfield.L = is_load ? 1 : 0;
     bitfield.opcode = 0b101010010;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, is_load ? "ldp" : "stp");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, is_load ? "ldp x%i, x%i, [x%i]" : "stp x%i, x%i, [x%i]", reg1, reg2, dst_addr_reg);
 }
 
 void je_jit_arm_emit_stp_addr(je_context_t* context, int reg1, int reg2, int dst_addr_reg) {
@@ -5936,27 +6147,58 @@ void je_jit_arm_emit_ldp_addr(je_context_t* context, int reg1, int reg2, int dst
     je_jit_arm_emit_ldp_stp_addr(context, reg1, reg2, dst_addr_reg, true);
 }
 
-// CHECKME
 void je_jit_arm_emit_ret(je_context_t* context) {
     struct {
-        uint32_t op0    : 7;
-        uint32_t op1    : 4;
-        uint32_t op2    : 5;
-        uint32_t op3    : 6;
+        uint32_t Rm     : 5;
         uint32_t Rn     : 5;
-        uint32_t op4    : 5;
+        uint32_t M      : 1;
+        uint32_t A      : 1;
+        uint32_t fixed1 : 9;
+        uint32_t op     : 2;
+        uint32_t Z      : 2;
+        uint32_t fixed2 : 7;
     } bitfield;
     assert(sizeof(bitfield) == 4);
 
-    bitfield.op4 = 0b00000;
+    bitfield.Rm = 0;
     bitfield.Rn = JE_JIT_ARM_REG_X30; // link register
-    bitfield.op3 = 0b000000;
-    bitfield.op2 = 0b11111;
-    bitfield.op1 = 0b0010;
-    bitfield.op0 = 0b1101011;
+    bitfield.M = 0;
+    bitfield.A = 0;
+    bitfield.fixed1 = 0b111110000;
+    bitfield.op = 0b10;
+    bitfield.Z = 0;
+    bitfield.fixed2 = 0b1101011;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "ret");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "ret");
+}
+
+void je_jit_arm_emit_blr(je_context_t* context, int addr_reg) {
+    struct {
+        uint32_t Rm : 5;
+        uint32_t Rn : 5;
+        uint32_t M : 1;
+        uint32_t A : 1;
+        uint32_t fixed1 : 9;
+        uint32_t op : 2;
+        uint32_t Z : 2;
+        uint32_t fixed2 : 7;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rm = 0;
+    bitfield.Rn = addr_reg;
+    bitfield.M = 0;
+    bitfield.A = 0;
+    bitfield.fixed1 = 0b111110000;
+    bitfield.op = 0b01;
+    bitfield.Z = 0;
+    bitfield.fixed2 = 0b1101011;
+
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "blr x%i", addr_reg);
 }
 
 void je_jit_arm_emit_mov(je_context_t* context, int dst, int src) {
@@ -5964,17 +6206,16 @@ void je_jit_arm_emit_mov(je_context_t* context, int dst, int src) {
     je_jit_arm_emit_add_imm12(context, dst, src, 0);
 }
 
-// CHECKME
 void je_jit_arm_emit_orn_r32(je_context_t* context, int dst, int reg1, int reg2) {
     struct {
-        uint32_t Rd         : 5;
-        uint32_t Rn         : 5;
-        uint32_t imm6       : 6;
-        uint32_t Rm         : 5;
-        uint32_t N          : 1;
-        uint32_t fixed      : 5;
-        uint32_t opc        : 2;
-        uint32_t sf         : 1; // FIXME: 30 bits
+        uint32_t Rd     : 5;
+        uint32_t Rn     : 5;
+        uint32_t imm6   : 6;
+        uint32_t Rm     : 5;
+        uint32_t N      : 1;
+        uint32_t shift  : 2;
+        uint32_t opc    : 7;
+        uint32_t sf     : 1;
     } bitfield;
     assert(sizeof(bitfield) == 4);
 
@@ -5983,25 +6224,25 @@ void je_jit_arm_emit_orn_r32(je_context_t* context, int dst, int reg1, int reg2)
     bitfield.imm6 = 0;
     bitfield.Rm = reg2;
     bitfield.N = 1;
-    bitfield.fixed = 0b01010;
-    bitfield.opc = 0b01;
+    bitfield.shift = 0;
+    bitfield.opc = 0b0101010;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "orn");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "orn w%i, w%i, w%i", dst, reg1, reg2);
 }
 
-// CHECKME
 void je_jit_arm_emit_and_r32(je_context_t* context, int dst, int reg1, int reg2) {
     struct {
-        uint32_t Rd         : 5;
-        uint32_t Rn         : 5;
-        uint32_t imm6       : 6;
-        uint32_t Rm         : 5;
-        uint32_t N          : 1;
-        uint32_t fixed      : 5;
-        uint32_t opc        : 2;
-        uint32_t sf         : 1; // FIXME: 30 bits
+        uint32_t Rd     : 5;
+        uint32_t Rn     : 5;
+        uint32_t imm6   : 6;
+        uint32_t Rm     : 5;
+        uint32_t N      : 1;
+        uint32_t shift  : 2;
+        uint32_t opc    : 7;
+        uint32_t sf     : 1;
     } bitfield;
     assert(sizeof(bitfield) == 4);
 
@@ -6010,25 +6251,25 @@ void je_jit_arm_emit_and_r32(je_context_t* context, int dst, int reg1, int reg2)
     bitfield.imm6 = 0;
     bitfield.Rm = reg2;
     bitfield.N = 0;
-    bitfield.fixed = 0b01010;
-    bitfield.opc = 0b00;
+    bitfield.shift = 0;
+    bitfield.opc = 0b0001010;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "and");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "and w%i, w%i, w%i", dst, reg1, reg2);
 }
 
-// CHECKME
 void je_jit_arm_emit_orr_r32(je_context_t* context, int dst, int reg1, int reg2) {
     struct {
-        uint32_t Rd         : 5;
-        uint32_t Rn         : 5;
-        uint32_t imm6       : 6;
-        uint32_t Rm         : 5;
-        uint32_t N          : 1;
-        uint32_t fixed      : 5;
-        uint32_t opc        : 2;
-        uint32_t sf         : 1; // FIXME: 30 bits
+        uint32_t Rd     : 5;
+        uint32_t Rn     : 5;
+        uint32_t imm6   : 6;
+        uint32_t Rm     : 5;
+        uint32_t N      : 1;
+        uint32_t shift  : 2;
+        uint32_t opc    : 7;
+        uint32_t sf     : 1;
     } bitfield;
     assert(sizeof(bitfield) == 4);
 
@@ -6037,25 +6278,25 @@ void je_jit_arm_emit_orr_r32(je_context_t* context, int dst, int reg1, int reg2)
     bitfield.imm6 = 0;
     bitfield.Rm = reg2;
     bitfield.N = 0;
-    bitfield.fixed = 0b01010;
-    bitfield.opc = 0b01;
+    bitfield.shift = 0;
+    bitfield.opc = 0b0101010;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "orr");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "orr w%i, w%i, w%i", dst, reg1, reg2);
 }
 
-// CHECKME
 void je_jit_arm_emit_eor_r32(je_context_t* context, int dst, int reg1, int reg2) {
     struct {
-        uint32_t Rd         : 5;
-        uint32_t Rn         : 5;
-        uint32_t imm6       : 6;
-        uint32_t Rm         : 5;
-        uint32_t N          : 1;
-        uint32_t fixed      : 5;
-        uint32_t opc        : 2;
-        uint32_t sf         : 1; // FIXME: 30 bits
+        uint32_t Rd     : 5;
+        uint32_t Rn     : 5;
+        uint32_t imm6   : 6;
+        uint32_t Rm     : 5;
+        uint32_t N      : 1;
+        uint32_t shift  : 2;
+        uint32_t opc    : 7;
+        uint32_t sf     : 1;
     } bitfield;
     assert(sizeof(bitfield) == 4);
 
@@ -6064,22 +6305,23 @@ void je_jit_arm_emit_eor_r32(je_context_t* context, int dst, int reg1, int reg2)
     bitfield.imm6 = 0;
     bitfield.Rm = reg2;
     bitfield.N = 0;
-    bitfield.fixed = 0b01010;
-    bitfield.opc = 0b10;
+    bitfield.shift = 0;
+    bitfield.opc = 0b1001010;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "eor");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "eor w%i, w%i, w%i", dst, reg1, reg2);
 }
 
-// CHECKME
 void je_jit_arm_emit_madd_r32(je_context_t* context, int dst, int reg1, int reg2, int reg3) {
     struct {
         uint32_t Rd      : 5;
         uint32_t Rn      : 5;
         uint32_t Ra      : 5;
+        uint32_t o0      : 1;
         uint32_t Rm      : 5;
-        uint32_t opcode  : 11;
+        uint32_t opcode  : 10;
         uint32_t sf      : 1;   
     } bitfield;
     assert(sizeof(bitfield) == 4);
@@ -6087,23 +6329,24 @@ void je_jit_arm_emit_madd_r32(je_context_t* context, int dst, int reg1, int reg2
     bitfield.Rd = dst;
     bitfield.Rn = reg1;
     bitfield.Ra = reg3;
+    bitfield.o0 = 0;
     bitfield.Rm = reg2;
     bitfield.opcode = 0b0011011000;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "madd");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "madd w%i, w%i, w%i, w%i", dst, reg1, reg2, reg3);
 }
 
-// CHECKME
 void je_jit_arm_emit_sdiv_r32(je_context_t* context, int dst, int reg1, int reg2) {
     struct {
-        uint32_t Rd         : 5;
-        uint32_t Rn         : 5;
-        uint32_t op         : 6;
-        uint32_t Rm         : 5;
-        uint32_t opcode     : 10;
-        uint32_t sf         : 1;
+        uint32_t Rd     : 5;
+        uint32_t Rn     : 5;
+        uint32_t op     : 6;
+        uint32_t Rm     : 5;
+        uint32_t opcode : 10;
+        uint32_t sf     : 1;
     } bitfield;
     assert(sizeof(bitfield) == 4);
 
@@ -6114,20 +6357,20 @@ void je_jit_arm_emit_sdiv_r32(je_context_t* context, int dst, int reg1, int reg2
     bitfield.opcode = 0b0011010110;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "sdiv");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "sdiv w%i, w%i, w%i", dst, reg1, reg2);
 }
 
-// CHECKME
 void je_jit_arm_emit_msub_r32(je_context_t* context, int dst, int reg1, int reg2, int reg3) {
     struct {
-        uint32_t Rd         : 5;
-        uint32_t Rn         : 5;
-        uint32_t Ra         : 5;
-        uint32_t o0         : 1;
-        uint32_t Rm         : 5;
-        uint32_t opcode     : 10;
-        uint32_t sf         : 1;
+        uint32_t Rd     : 5;
+        uint32_t Rn     : 5;
+        uint32_t Ra     : 5;
+        uint32_t o0     : 1;
+        uint32_t Rm     : 5;
+        uint32_t opcode : 10;
+        uint32_t sf     : 1;
     } bitfield;
     assert(sizeof(bitfield) == 4);
 
@@ -6139,11 +6382,11 @@ void je_jit_arm_emit_msub_r32(je_context_t* context, int dst, int reg1, int reg2
     bitfield.opcode = 0b0011011000;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "msub");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "msub w%i, w%i, w%i, w%i", dst, reg1, reg2, reg3);
 }
 
-// CHECKME
 void je_jit_arm_emit_cmp_r32(je_context_t* context, int reg1, int reg2) {
     // This is just encoded as a sub xzr, x0, x1
     // Just subtracts and discards the result, and sets the relevant flags.
@@ -6153,11 +6396,12 @@ void je_jit_arm_emit_cmp_r32(je_context_t* context, int reg1, int reg2) {
         uint32_t Rn      : 5;
         uint32_t imm6    : 6;
         uint32_t Rm      : 5;
+        uint32_t fixed1  : 1;
         uint32_t shift   : 2;
         uint32_t opcode  : 5;
         uint32_t S       : 1;
         uint32_t op      : 1;
-        uint32_t sf      : 1; // FIXME: 31 bits
+        uint32_t sf      : 1;
     } bitfield;
     assert(sizeof(bitfield) == 4);
 
@@ -6165,41 +6409,53 @@ void je_jit_arm_emit_cmp_r32(je_context_t* context, int reg1, int reg2) {
     bitfield.Rn = reg1;
     bitfield.imm6 = 0;
     bitfield.Rm = reg2;
+    bitfield.fixed1 = 0;
     bitfield.shift = 0;
     bitfield.opcode = 0b01011;
     bitfield.S = 1;
     bitfield.op = 1;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "cmp");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "cmp w%i, w%i", reg1, reg2);
 }
 
-// CHECKME
 void je_jit_arm_emit_cset_r32(je_context_t* context, int reg1, int condition) {
     struct {
         uint32_t Rd      : 5;
-        uint32_t Rm      : 5;
-        uint32_t cond    : 4;
-        uint32_t S       : 1;
-        uint32_t op      : 1;
         uint32_t Rn      : 5;
-        uint32_t fixed   : 6;
-        uint32_t sf      : 1; // FIXME 28 bits
+        uint32_t o2      : 1;
+        uint32_t fixed1  : 1;
+        uint32_t cond    : 4;
+        uint32_t Rm      : 5;
+        uint32_t op      : 10;
+        uint32_t sf      : 1;
     } bitfield;
     assert(sizeof(bitfield) == 4);
 
     bitfield.Rd = reg1;
-    bitfield.Rm = JE_JIT_ARM_REG_XZR;
-    bitfield.cond = condition;
-    bitfield.S = 0;
-    bitfield.op = 1;
     bitfield.Rn = JE_JIT_ARM_REG_XZR;
-    bitfield.fixed = 0b110101;
+    bitfield.o2 = 1;
+    bitfield.fixed1 = 0;
+    bitfield.cond = condition;
+    bitfield.Rm = JE_JIT_ARM_REG_XZR;
+    bitfield.op = 0b0011010100;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "cset");
-    context->jit_instruction_num++;
+    const char* condition_str = "";
+    switch (condition) {
+        case 0b1011: condition_str = "l";   break;
+        case 0b1101: condition_str = "leq"; break;
+        case 0b1100: condition_str = "g";   break;
+        case 0b1010: condition_str = "geq"; break;
+        case 0b0000: condition_str = "eq";  break;
+        case 0b0001: condition_str = "neq"; break;
+    }
+
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "cset w%i, %s", reg1, condition_str);
 }
 
 void je_jit_arm_emit_cset_less_r32(je_context_t* context, int reg1) {
@@ -6226,91 +6482,142 @@ void je_jit_arm_emit_cset_not_equal_r32(je_context_t* context, int reg1) {
     je_jit_arm_emit_cset_r32(context, reg1, 0b0001);
 }
 
-// CHECKME
 void je_jit_arm_emit_scvtf_r32(je_context_t* context, int vreg, int xreg) {
     struct {
-        uint32_t Rd      : 5;
-        uint32_t Rn      : 5;
-        uint32_t opcode  : 6;
-        uint32_t fixed   : 16;
+        uint32_t Rd     : 5;
+        uint32_t Rn     : 5;
+        uint32_t opcode : 9;
+        uint32_t rmode  : 2;
+        uint32_t fixed1 : 1;
+        uint32_t ftype  : 2;
+        uint32_t fixed2 : 7;
+        uint32_t sf     : 1;
     } bitfield;
     assert(sizeof(bitfield) == 4);
-    
-    bitfield.Rd = vreg - JE_JIT_ARM_REG_V0;
-    bitfield.Rn = xreg;
-    bitfield.opcode = 0b100010;
-    bitfield.fixed = 0x1E22;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "scvtf");
-    context->jit_instruction_num++;
+    bitfield.Rd     = vreg - JE_JIT_ARM_REG_V0;
+    bitfield.Rn     = xreg;
+    bitfield.opcode = 0b010000000;
+    bitfield.rmode  = 0b00;
+    bitfield.fixed1 = 1;
+    bitfield.ftype  = 0b00;
+    bitfield.fixed2 = 0b0011110;
+    bitfield.sf     = 0;
+
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "scvtf s%i, w%i", bitfield.Rd, bitfield.Rn);
 }
 
 void je_jit_arm_emit_fcvtzs_r32(je_context_t* context, int xreg, int vreg) {
     struct {
         uint32_t Rd     : 5;
         uint32_t Rn     : 5;
-        uint32_t opcode : 6;
+        uint32_t opcode : 9;
         uint32_t rmode  : 2;
+        uint32_t fixed1 : 1;
         uint32_t ftype  : 2;
-        uint32_t S      : 1;
+        uint32_t fixed2 : 7;
         uint32_t sf     : 1;
-        uint32_t fixed  : 10;
     } bitfield;
     assert(sizeof(bitfield) == 4);
 
     bitfield.Rd     = xreg;
-    bitfield.Rn     = vreg;
+    bitfield.Rn     = vreg - JE_JIT_ARM_REG_V0;
     bitfield.opcode = 0;
-    bitfield.rmode  = 3;
-    bitfield.ftype  = 0;
-    bitfield.S      = 0;
+    bitfield.rmode  = 0b11;
+    bitfield.fixed1 = 1;
+    bitfield.ftype  = 0b00;
+    bitfield.fixed2 = 0b0011110;
     bitfield.sf     = 0;
-    bitfield.fixed  = 0x279;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "fcvtzs w%i, s%i", bitfield.Rd, bitfield.Rn);
 }
 
-// CHECKME
 void je_jit_arm_emit_movz_r32_imm16(je_context_t* context, int reg, uint16_t value) {
     struct {
         uint32_t Rd      : 5;
         uint32_t imm16   : 16;
         uint32_t hw      : 2;
-        uint32_t fixed   : 9;
-        uint32_t sf      : 1; // FIXME: 33 bits
+        uint32_t opcode  : 8;
+        uint32_t sf      : 1; 
     } bitfield;
     assert(sizeof(bitfield) == 4);
 
-    bitfield.Rd = 0;
+    bitfield.Rd = reg;
     bitfield.imm16 = value;
     bitfield.hw = 0;
-    bitfield.fixed = 0b101001010;
+    bitfield.opcode = 0b10100101;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "movz");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "movz w%i, #%i, lsl #%i", reg, value, 0);
 }
 
-// CHECKME
 void je_jit_arm_emit_movk_r32_imm16(je_context_t* context, int reg, int value, int shift) {
     struct {
         uint32_t Rd      : 5;
         uint32_t imm16   : 16;
         uint32_t hw      : 2;
-        uint32_t fixed   : 9;
-        uint32_t sf      : 1;   // FIXME: 33 bits
+        uint32_t opcode  : 8;
+        uint32_t sf      : 1; 
     } bitfield;
     assert(sizeof(bitfield) == 4);
 
-    bitfield.Rd = 0;
+    bitfield.Rd = reg;
     bitfield.imm16 = value;
-    bitfield.hw = 0;
-    bitfield.fixed = 0b111001010;
+    bitfield.hw = shift / 16;
+    bitfield.opcode = 0b11100101;
     bitfield.sf = 0;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "movk");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "movk w%i, #%i, lsl #%i", reg, value, shift);
+}
+
+void je_jit_arm_emit_movz_r64_imm16(je_context_t* context, int reg, uint16_t value) {
+    struct {
+        uint32_t Rd      : 5;
+        uint32_t imm16   : 16;
+        uint32_t hw      : 2;
+        uint32_t opcode  : 8;
+        uint32_t sf      : 1; 
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rd = reg;
+    bitfield.imm16 = value;
+    bitfield.hw = 0;
+    bitfield.opcode = 0b10100101;
+    bitfield.sf = 1;
+
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "movz x%i, #%i, lsl #%i", reg, value, 0);
+}
+
+void je_jit_arm_emit_movk_r64_imm16(je_context_t* context, int reg, int value, int shift) {
+    struct {
+        uint32_t Rd      : 5;
+        uint32_t imm16   : 16;
+        uint32_t hw      : 2;
+        uint32_t opcode  : 8;
+        uint32_t sf      : 1; 
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rd = reg;
+    bitfield.imm16 = value;
+    bitfield.hw = shift / 16;
+    bitfield.opcode = 0b11100101;
+    bitfield.sf = 1;
+
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "movk x%i, #%i, lsl #%i", reg, value, shift);
 }
 
 void je_jit_arm_emit_mov_r32_imm32(je_context_t* context, int reg, uint32_t value) {
@@ -6325,51 +6632,54 @@ void je_jit_arm_emit_mov_r32_imm64(je_context_t* context, int reg, uint64_t valu
     uint16_t bits1 = (value >> 32) & 0xFFFF;
     uint16_t bits2 = (value >> 16) & 0xFFFF;
     uint16_t bits3 = value & 0xFFFF;
-    je_jit_arm_emit_movz_r32_imm16(context, reg, bits3);
-    je_jit_arm_emit_movk_r32_imm16(context, reg, bits2, 16);
-    je_jit_arm_emit_movk_r32_imm16(context, reg, bits1, 32);
-    je_jit_arm_emit_movk_r32_imm16(context, reg, bits0, 48);
+    je_jit_arm_emit_movz_r64_imm16(context, reg, bits3);
+    je_jit_arm_emit_movk_r64_imm16(context, reg, bits2, 16);
+    je_jit_arm_emit_movk_r64_imm16(context, reg, bits1, 32);
+    je_jit_arm_emit_movk_r64_imm16(context, reg, bits0, 48);
 }
 
-// CHECKME
 void je_jit_arm_emit_ldr_r32(je_context_t* context, int reg, int addr_reg) {
     struct {
         uint32_t Rt      : 5;
-        uint32_t imm12   : 12;
         uint32_t Rn      : 5;
-        uint32_t fixed   : 10;  
+        uint32_t imm12   : 12;
+        uint32_t opcode  : 8;
+        uint32_t size    : 2;
     } bitfield;
     assert(sizeof(bitfield) == 4);
     
     bitfield.Rt = reg;
-    bitfield.imm12 = 0;
     bitfield.Rn = addr_reg;
-    bitfield.fixed = 0b1011100101;
+    bitfield.imm12 = 0;
+    bitfield.opcode = 0b11100101;
+    bitfield.size = 0b10;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "ldr");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "ldr w%i, [x%i]", reg, addr_reg);
 }
 
-// CHECKME
 void je_jit_arm_emit_ldr_r64(je_context_t* context, int reg, int addr_reg) {
     struct {
         uint32_t Rt      : 5;
-        uint32_t imm12   : 12;
         uint32_t Rn      : 5;
-        uint32_t fixed   : 10;  // FIXME: 35 bits
+        uint32_t imm12   : 12;
+        uint32_t opcode  : 8;
+        uint32_t size    : 2;
     } bitfield;
     assert(sizeof(bitfield) == 4);
     
     bitfield.Rt = reg;
-    bitfield.imm12 = 0;
     bitfield.Rn = addr_reg;
-    bitfield.fixed = 0b1111100101;
+    bitfield.imm12 = 0;
+    bitfield.opcode = 0b11100101;
+    bitfield.size = 0b11;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "ldr");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "ldr x%i, [x%i]", reg, addr_reg);
 }
 
-// CHECKME
 void je_jit_arm_emit_ldr_s32(je_context_t* context, int reg, int addr_reg) {
     struct {
         uint32_t Rt         : 5;
@@ -6379,19 +6689,77 @@ void je_jit_arm_emit_ldr_s32(je_context_t* context, int reg, int addr_reg) {
     } bitfield;
     assert(sizeof(bitfield) == 4);
     
-    bitfield.Rt = reg;
+    bitfield.Rt = reg - JE_JIT_ARM_REG_V0;
     bitfield.Rn = addr_reg;
     bitfield.imm12 = 0;
     bitfield.fixed = 0b1011110101;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "ldr");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "ldr s%i, [x%i]", bitfield.Rt, bitfield.Rn);
 }
 
-// CHECKME
-void je_jit_arm_emit_fneg_r32(je_context_t* context, int reg1) {
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield);
-    context->jit_instruction_num++;
+void je_jit_arm_emit_str_r32(je_context_t* context, int reg, int addr_reg) {
+    struct {
+        uint32_t Rt     : 5;
+        uint32_t Rn     : 5;
+        uint32_t imm12  : 12;
+        uint32_t opcode : 8;
+        uint32_t size   : 2;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rt = reg;
+    bitfield.Rn = addr_reg;
+    bitfield.imm12 = 0;
+    bitfield.opcode = 0b11100100;
+    bitfield.size = 0b10;
+
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "str w%i, [x%i]", reg, addr_reg);
+}
+
+void je_jit_arm_emit_str_r64(je_context_t* context, int reg, int addr_reg) {
+    struct {
+        uint32_t Rt     : 5;
+        uint32_t Rn     : 5;
+        uint32_t imm12  : 12;
+        uint32_t opcode : 8;
+        uint32_t size   : 2;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rt = reg;
+    bitfield.Rn = addr_reg;
+    bitfield.imm12 = 0;
+    bitfield.opcode = 0b11100100;
+    bitfield.size = 0b11;
+
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "str x%i, [x%i]", reg, addr_reg);
+}
+
+void je_jit_arm_emit_str_s32(je_context_t* context, int reg, int addr_reg) {
+    struct {
+        uint32_t Rt     : 5;
+        uint32_t Rn     : 5;
+        uint32_t imm12  : 12;
+        uint32_t opcode : 8;
+        uint32_t size   : 2;
+    } bitfield;
+    assert(sizeof(bitfield) == 4);
+
+    bitfield.Rt = reg - JE_JIT_ARM_REG_V0;
+    bitfield.Rn = addr_reg;
+    bitfield.imm12 = 0;
+    bitfield.opcode = 0b11110100;
+    bitfield.size = 0b10;
+
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "str s%i, [x%i]", bitfield.Rt, bitfield.Rn);
 }
 
 void je_jit_arm_emit_fneg_r32(je_context_t* context, int reg1, int reg2) {
@@ -6403,127 +6771,162 @@ void je_jit_arm_emit_fneg_r32(je_context_t* context, int reg1, int reg2) {
     } bitfield;
     assert(sizeof(bitfield) == 4);
     
-    bitfield.Rd = reg1;
-    bitfield.Rn = reg2;
+    bitfield.Rd = reg1 - JE_JIT_ARM_REG_V0;
+    bitfield.Rn = reg2 - JE_JIT_ARM_REG_V0;
     bitfield.opcode = 0b010000;
     bitfield.fixed = 0x1E21;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "fneg");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "fneg s%i, s%i", bitfield.Rd, bitfield.Rn);
 }
 
-// CHECKME
 void je_jit_arm_emit_fmul_r32(je_context_t* context, int reg1, int reg2) {
     struct {
-        uint32_t Rd      : 5;
-        uint32_t Rn      : 5;
-        uint32_t opcode  : 6;
-        uint32_t fixed   : 16;
+        uint32_t Rd         : 5;
+        uint32_t Rn         : 5;
+        uint32_t opcode     : 6;
+        uint32_t Rm         : 5;
+        uint32_t fixed1     : 1;
+        uint32_t ftype      : 2;
+        uint32_t fixed2     : 8;
     } bitfield;
     assert(sizeof(bitfield) == 4);
     
-    bitfield.Rd = reg1;
-    bitfield.Rn = reg1;
+    bitfield.Rd = reg1 - JE_JIT_ARM_REG_V0;
+    bitfield.Rn = reg1 - JE_JIT_ARM_REG_V0;
     bitfield.opcode = 0b000010;
-    bitfield.fixed = 0x1E22;
+    bitfield.Rm = reg2 - JE_JIT_ARM_REG_V0;
+    bitfield.fixed1 = 1;
+    bitfield.ftype = 0b00;
+    bitfield.fixed2 = 0b00011110;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "fmul");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "fmul s%i, s%i, s%i", bitfield.Rd, bitfield.Rn, bitfield.Rm);
 }
 
-// CHECKME
 void je_jit_arm_emit_fdiv_r32(je_context_t* context, int reg1, int reg2) {
     struct {
-        uint32_t Rd      : 5;
-        uint32_t Rn      : 5;
-        uint32_t opcode  : 6;
-        uint32_t fixed   : 16;
+        uint32_t Rd         : 5;
+        uint32_t Rn         : 5;
+        uint32_t opcode     : 6;
+        uint32_t Rm         : 5;
+        uint32_t fixed1     : 1;
+        uint32_t ftype      : 2;
+        uint32_t fixed2     : 8;
     } bitfield;
     assert(sizeof(bitfield) == 4);
     
-    bitfield.Rd = reg1;
-    bitfield.Rn = reg1;
-    bitfield.opcode = 0b100000;
-    bitfield.fixed = 0x1E22;
+    bitfield.Rd = reg1 - JE_JIT_ARM_REG_V0;
+    bitfield.Rn = reg1 - JE_JIT_ARM_REG_V0;
+    bitfield.opcode = 0b000110;
+    bitfield.Rm = reg2 - JE_JIT_ARM_REG_V0;
+    bitfield.fixed1 = 1;
+    bitfield.ftype = 0b00;
+    bitfield.fixed2 = 0b00011110;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "fdiv");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "fdiv s%i, s%i, s%i", bitfield.Rd, bitfield.Rn, bitfield.Rm);
 }
 
-// CHECKME
 void je_jit_arm_emit_fsub_r32(je_context_t* context, int reg1, int reg2) {
     struct {
-        uint32_t Rd      : 5;
-        uint32_t Rn      : 5;
-        uint32_t opcode  : 6;
-        uint32_t fixed   : 16;
+        uint32_t Rd         : 5;
+        uint32_t Rn         : 5;
+        uint32_t opcode     : 6;
+        uint32_t Rm         : 5;
+        uint32_t fixed1     : 1;
+        uint32_t ftype      : 2;
+        uint32_t fixed2     : 8;
     } bitfield;
     assert(sizeof(bitfield) == 4);
     
-    bitfield.Rd = reg1;
-    bitfield.Rn = reg1;
-    bitfield.opcode = 0b011100;
-    bitfield.fixed = 0x1E22;
+    bitfield.Rd = reg1 - JE_JIT_ARM_REG_V0;
+    bitfield.Rn = reg1 - JE_JIT_ARM_REG_V0;
+    bitfield.opcode = 0b001110;
+    bitfield.Rm = reg2 - JE_JIT_ARM_REG_V0;
+    bitfield.fixed1 = 1;
+    bitfield.ftype = 0b00;
+    bitfield.fixed2 = 0b00011110;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "fsub");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "fsub s%i, s%i, s%i", bitfield.Rd, bitfield.Rn, bitfield.Rm);
 }
 
-// CHECKME
 void je_jit_arm_emit_fadd_r32(je_context_t* context, int reg1, int reg2) {
     struct {
-        uint32_t Rd      : 5;
-        uint32_t Rn      : 5;
-        uint32_t opcode  : 6;
-        uint32_t fixed   : 16;
+        uint32_t Rd         : 5;
+        uint32_t Rn         : 5;
+        uint32_t opcode     : 6;
+        uint32_t Rm         : 5;
+        uint32_t fixed1     : 1;
+        uint32_t ftype      : 2;
+        uint32_t fixed2     : 8;
     } bitfield;
     assert(sizeof(bitfield) == 4);
     
-    bitfield.Rd = reg1;
-    bitfield.Rn = reg1;
-    bitfield.opcode = 0b001000;
-    bitfield.fixed = 0x1E22;
+    bitfield.Rd = reg1 - JE_JIT_ARM_REG_V0;
+    bitfield.Rn = reg1 - JE_JIT_ARM_REG_V0;
+    bitfield.opcode = 0b001010;
+    bitfield.Rm = reg2 - JE_JIT_ARM_REG_V0;
+    bitfield.fixed1 = 1;
+    bitfield.ftype = 0b00;
+    bitfield.fixed2 = 0b00011110;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "fadd");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "fadd s%i, s%i, s%i", bitfield.Rd, bitfield.Rn, bitfield.Rm);
 }
 
-// CHECKME
 void je_jit_arm_emit_fcmp_r32(je_context_t* context, int reg1, int reg2) {
     struct {
-        uint32_t Rm      : 5;
-        uint32_t fixed1  : 6;
-        uint32_t Rn      : 5;
-        uint32_t type    : 2;
-        uint32_t fixed2  : 14;
+        uint32_t opc        : 5;
+        uint32_t Rn         : 5;
+        uint32_t opcode     : 6;
+        uint32_t Rm         : 5;
+        uint32_t fixed1     : 1;
+        uint32_t ftype      : 2;
+        uint32_t fixed2     : 8;
     } bitfield;
     assert(sizeof(bitfield) == 4);
     
-    bitfield.Rm = reg2;
-    bitfield.fixed1 = 0b100000;
-    bitfield.Rn = reg1;
-    bitfield.type = 0b00;
-    bitfield.fixed2 = 0b01111000010000;
+    bitfield.opc = 0;
+    bitfield.Rn = reg1 - JE_JIT_ARM_REG_V0;
+    bitfield.opcode = 0b001000;
+    bitfield.Rm = reg2 - JE_JIT_ARM_REG_V0;
+    bitfield.fixed1 = 1;
+    bitfield.ftype = 0b00;
+    bitfield.fixed2 = 0b00011110;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "fcmp");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "fcmp s%i, s%i", bitfield.Rn, bitfield.Rm);
 }
 
-// CHECKME
 void je_jit_arm_emit_fmov_r32(je_context_t* context, int reg1, int reg2) {
     struct {
-        uint32_t Rd      : 5;
-        uint32_t Rn      : 5;
-        uint32_t fixed   : 22;
+        uint32_t Rd       : 5;
+        uint32_t Rn       : 5;
+        uint32_t opc      : 7;
+        uint32_t fixed1   : 5;
+        uint32_t ftype    : 2;
+        uint32_t fixed2   : 8;
     } bitfield;
     assert(sizeof(bitfield) == 4);
     
-    bitfield.Rd = reg1;
-    bitfield.Rn = reg2;
-    bitfield.fixed = 0b00011110001001110000;
+    bitfield.Rd = reg1 - JE_JIT_ARM_REG_V0;
+    bitfield.Rn = reg2 - JE_JIT_ARM_REG_V0;
+    bitfield.opc = 0b0010000;
+    bitfield.fixed1 = 0b10000;
+    bitfield.ftype = 00; // Single precision
+    bitfield.fixed2 = 0b00011110;
 
-    je_jit_arm_emit_instruction(context, (uint8_t*)&bitfield, "fmov");
-    context->jit_instruction_num++;
+    je_jit_start_instruction(context);
+    je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
+    je_jit_end_instruction(context, "fmov s%i, s%i", bitfield.Rd, bitfield.Rn);
 }
 
 int je_jit_arm_alloc_x_reg(je_context_t* context) {
@@ -6600,6 +7003,7 @@ bool je_jit_arm_reg_allocated(je_context_t* context, int reg) {
 
 void je_jit_arm_emit_prologue(je_context_t* context) {
     // Link the frame record
+    je_jit_emit_comment(context, "Prologue");
     je_jit_arm_emit_sub_imm12(context, JE_JIT_ARM_REG_SP, JE_JIT_ARM_REG_SP, 16);
     je_jit_arm_emit_stp_addr(context, JE_JIT_ARM_REG_X29, JE_JIT_ARM_REG_X30, JE_JIT_ARM_REG_SP);
     je_jit_arm_emit_mov(context, JE_JIT_ARM_REG_X29, JE_JIT_ARM_REG_SP);
@@ -6607,6 +7011,7 @@ void je_jit_arm_emit_prologue(je_context_t* context) {
 
 void je_jit_arm_emit_epilogue(je_context_t* context, int return_reg) {
     // Unlink the frame record
+    je_jit_emit_comment(context, "Epilogue");
     je_jit_arm_emit_ldp_addr(context, JE_JIT_ARM_REG_X29, JE_JIT_ARM_REG_X30, JE_JIT_ARM_REG_SP);
     je_jit_arm_emit_add_imm12(context, JE_JIT_ARM_REG_SP, JE_JIT_ARM_REG_SP, 16);
     je_jit_arm_emit_ret(context);
@@ -6614,13 +7019,131 @@ void je_jit_arm_emit_epilogue(je_context_t* context, int return_reg) {
  
 // Return value is the register the result is in if applicable.
 int je_jit_arm_emit_function_call(je_context_t* context, je_ast_node_t* node) {
-    // TODO
-    assert(false);
-    return 0;
+
+    je_func_def_t* function = je_get_ast_node_function(context, node);
+
+    // Store every parameter in the context.
+    for (int i = 0; i < function->param_count; i++) {
+        je_ast_node_t* child = je_get_node_child(context, node, i);
+        int reg1 = je_jit_arm_emit_node(context, child);
+        int type = je_get_func_param_type(context, function, i);
+
+        je_jit_emit_comment(context, "Storing %s parameter %i", je_type_name(type), i);
+        switch (type) {
+            case JE_TYPE_INT: {
+                int addr_reg = je_jit_arm_alloc_x_reg(context);
+                uint64_t address = (uint64_t)&context->function_params[i].int_value;
+                je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+                je_jit_arm_emit_str_r32(context, addr_reg, reg1);
+                je_jit_arm_free_reg(context, addr_reg);
+                break;
+            }
+            case JE_TYPE_BOOL: {
+                int addr_reg = je_jit_arm_alloc_x_reg(context);
+                uint64_t address = (uint64_t)&context->function_params[i].bool_value;
+                je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+                je_jit_arm_emit_str_r32(context, addr_reg, reg1);
+                je_jit_arm_free_reg(context, addr_reg);
+                break;
+            }
+            case JE_TYPE_FLOAT: {
+                int addr_reg = je_jit_arm_alloc_x_reg(context);
+                uint64_t address = (uint64_t)&context->function_params[i].float_value;
+                je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+                je_jit_arm_emit_str_s32(context, addr_reg, reg1);
+                je_jit_arm_free_reg(context, addr_reg);
+                break;
+            }
+            case JE_TYPE_STRING: {
+                int addr_reg = je_jit_arm_alloc_x_reg(context);
+                uint64_t address = (uint64_t)&context->function_params[i].string_value;
+                je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+                je_jit_arm_emit_str_r64(context, addr_reg, reg1);
+                je_jit_arm_free_reg(context, addr_reg);
+                break;
+            }
+        }
+
+        je_jit_arm_free_reg(context, reg1);
+    }
+
+#if defined(JE_CALLING_CONVENTION_ARM64)
+    int active_func_addr_reg = je_jit_arm_alloc_x_reg(context);
+    int func_addr_reg = je_jit_arm_alloc_x_reg(context);
+
+    // Store the active_function pointer
+    je_jit_emit_comment(context, "Storing active_function");
+    uint64_t address = (uint64_t)&context->active_function;
+    je_jit_arm_emit_mov_r32_imm64(context, active_func_addr_reg, address);
+    je_jit_arm_emit_mov_r32_imm64(context, func_addr_reg, (uint64_t)function);
+    je_jit_arm_emit_str_r64(context, active_func_addr_reg, func_addr_reg);
+
+    // Push the context argument which goes into X0
+    je_jit_emit_comment(context, "Passing context argument");
+    address = (uint64_t)context;
+    je_jit_arm_emit_mov_r32_imm64(context, JE_JIT_ARM_REG_X0, address);
+
+    // Call function
+    je_jit_emit_comment(context, "Calling function");
+    address = (uint64_t)function->function;
+    je_jit_arm_emit_mov_r32_imm64(context, func_addr_reg, address);
+    je_jit_arm_emit_blr(context, func_addr_reg);
+
+    je_jit_arm_free_reg(context, func_addr_reg);
+    je_jit_arm_free_reg(context, active_func_addr_reg);
+#else
+    #error compiler-specific implementation required
+#endif
+
+    // Move result into return register.
+    int ret_reg = 0;
+
+    je_jit_emit_comment(context, "Retrieving %s return value", je_type_name(function->return_type));
+    switch (function->return_type) {
+        case JE_TYPE_INT: {
+            ret_reg = je_jit_arm_alloc_x_reg(context);
+            int addr_reg = je_jit_arm_alloc_x_reg(context);
+            uint64_t address = (uint64_t)&context->function_result.int_value;
+            je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+            je_jit_arm_emit_ldr_r32(context, ret_reg, addr_reg);
+            je_jit_arm_free_reg(context, addr_reg);
+            break;
+        }
+        case JE_TYPE_BOOL: {
+            ret_reg = je_jit_arm_alloc_x_reg(context);
+            int addr_reg = je_jit_arm_alloc_x_reg(context);
+            uint64_t address = (uint64_t)&context->function_result.bool_value;
+            je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+            je_jit_arm_emit_ldr_r32(context, ret_reg, addr_reg);
+            je_jit_arm_free_reg(context, addr_reg);
+            break;
+        }
+        case JE_TYPE_FLOAT: {
+            ret_reg = je_jit_arm_alloc_v_reg(context);
+            int addr_reg = je_jit_arm_alloc_x_reg(context);
+            uint64_t address = (uint64_t)&context->function_result.float_value;
+            je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+            je_jit_arm_emit_ldr_s32(context, ret_reg, addr_reg);
+            je_jit_arm_free_reg(context, addr_reg);
+            break;
+        }
+        case JE_TYPE_STRING: {
+            ret_reg = je_jit_arm_alloc_x_reg(context);
+            int addr_reg = je_jit_arm_alloc_x_reg(context);
+            uint64_t address = (uint64_t)&context->function_result.string_value;
+            je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+            je_jit_arm_emit_ldr_r64(context, ret_reg, addr_reg);
+            je_jit_arm_free_reg(context, addr_reg);
+            break;
+        }
+    }
+
+    return ret_reg;
 }
 
 // Return value is the register the result is in if applicable.
 int je_jit_arm_emit_node(je_context_t* context, je_ast_node_t* node) {
+    je_jit_emit_comment(context, "%s", je_node_name(node->type));
     switch (node->type) {
         // ------------------------------------------------------------------------------
         // Integer operations
@@ -6994,7 +7517,7 @@ int je_jit_arm_emit_node(je_context_t* context, je_ast_node_t* node) {
         case JE_NODE_VARIABLE_FLOAT: {
             int addr_reg = je_jit_arm_alloc_x_reg(context);
             int dst_reg = je_jit_arm_alloc_v_reg(context);
-            uint64_t address = (uint64_t)je_get_variable_int(je_get_ast_node_variable(context, node));
+            uint64_t address = (uint64_t)je_get_variable_float(je_get_ast_node_variable(context, node));
             je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
             je_jit_arm_emit_ldr_s32(context, dst_reg, addr_reg);
             je_jit_arm_free_reg(context, addr_reg);
@@ -7047,7 +7570,7 @@ int je_jit_arm_emit_node(je_context_t* context, je_ast_node_t* node) {
         case JE_NODE_VARIABLE_STRING: {
             int addr_reg = je_jit_arm_alloc_x_reg(context);
             int dst_reg = je_jit_arm_alloc_x_reg(context);
-            uint64_t address = (uint64_t)je_get_variable_bool(je_get_ast_node_variable(context, node));
+            uint64_t address = (uint64_t)je_get_variable_string(je_get_ast_node_variable(context, node));
             je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
             je_jit_arm_emit_ldr_r64(context, dst_reg, addr_reg);
             je_jit_arm_free_reg(context, addr_reg);
@@ -7055,7 +7578,7 @@ int je_jit_arm_emit_node(je_context_t* context, je_ast_node_t* node) {
         }
         case JE_NODE_STRING_LITERAL: {
             int addr_reg = je_jit_arm_alloc_x_reg(context);
-            uint64_t address = (uint64_t)je_get_variable_string(je_get_ast_node_variable(context, node));
+            uint64_t address = (uint64_t)*je_get_ast_node_string(context, node);
             je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
             return addr_reg;
         }

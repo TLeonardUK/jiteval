@@ -83,16 +83,17 @@ void asset_result_string(const char* expr, const char* expected) {
         printf("Failed to evaluate expression '%s' with error: %s\n", expr, error_msg);
         test_failed();
     }
-    if (!(strcmp(ret, expected) == 0)) {
+    if (ret == NULL || !(strcmp(ret, expected) == 0)) {
         printf("Test failed '%s', expected '%s' but got '%s'\n", expr, expected, ret);
         test_failed();
     }
     free(ret);
 }
 
-void run_tests() {
-    
+void run_tests() {    
     // Float operators
+    asset_result_float("-1.0f", -1.0f);
+    asset_result_float("+1.0f", 1.0f);
     asset_result_float("2.0f + 1.0f", 3.0f);
     asset_result_float("2.0f - 1.0f", 1.0f);
     asset_result_float("2.0f * 2.0f", 4.0f);
@@ -185,6 +186,8 @@ void run_tests() {
 
     // Variables
     asset_result_float("PI", 3.14159265f);
+    asset_result_int("__version_major", JE_VERSION_MAJOR);
+    asset_result_string("__platform", JE_PLATFORM_NAME);
 }
 
 int main(int argc, char* argv[]) {
