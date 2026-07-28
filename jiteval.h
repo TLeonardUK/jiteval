@@ -224,7 +224,7 @@ extern "C" {
 //#define JE_DEBUG_FAKE_JIT_AVAILABLE
 
 // When enabled all contexts are forced to have the given flags
-//#define JE_DEBUG_FORCE_FLAGS (JE_FLAG_DEBUG_JIT_DISASSEMBLY)
+#define JE_DEBUG_FORCE_FLAGS (JE_FLAG_DEBUG_JIT_DISASSEMBLY)
 
 // -----------------------------------------------------------------------
 // PLATFORM DETERMINATION OPTIONS
