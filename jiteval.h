@@ -5039,7 +5039,7 @@ void je_jit_x86_emit_prologue(je_context_t* context) {
 }
 
 void je_jit_x86_emit_epilogue(je_context_t* context, int return_reg) {
-    je_jit_emit_comment(context, "Epilogue");
+    je_jit_emit_comment(context, "Store return value");
     // Move the return value to the result struct.
     context->result.type = context->ast_root->return_type;
     switch (context->ast_root->return_type) {
@@ -5093,6 +5093,7 @@ void je_jit_x86_emit_epilogue(je_context_t* context, int return_reg) {
         }
     }
 
+    je_jit_emit_comment(context, "Epilogue");
 #if defined(JE_CALLING_CONVENTION_MSVC)
     // Restore volatile registers (if we ever use them...)
 #elif defined(JE_CALLING_CONVENTION_C)
@@ -7009,7 +7010,46 @@ void je_jit_arm_emit_prologue(je_context_t* context) {
     je_jit_arm_emit_mov(context, JE_JIT_ARM_REG_X29, JE_JIT_ARM_REG_SP);
 }
 
-void je_jit_arm_emit_epilogue(je_context_t* context, int return_reg) {
+void je_jit_arm_emit_epilogue(je_context_t* context, int return_reg) {   
+    je_jit_emit_comment(context, "Store return value");
+
+    // Move the return value to the result struct.
+    context->result.type = context->ast_root->return_type;
+    switch (context->ast_root->return_type) {
+        case JE_TYPE_INT: {
+            int addr_reg = je_jit_arm_alloc_x_reg(context);
+            uint64_t address = (uint64_t)&context->result.int_value;
+            je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+            je_jit_arm_emit_ldr_r32(context, return_reg, addr_reg);
+            je_jit_arm_free_reg(context, addr_reg);
+            break;
+        }
+        case JE_TYPE_BOOL: {
+            int addr_reg = je_jit_arm_alloc_x_reg(context);
+            uint64_t address = (uint64_t)&context->result.bool_value;
+            je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+            je_jit_arm_emit_ldr_r32(context, return_reg, addr_reg);
+            je_jit_arm_free_reg(context, addr_reg);
+            break;
+        }
+        case JE_TYPE_FLOAT: {
+            int addr_reg = je_jit_arm_alloc_x_reg(context);
+            uint64_t address = (uint64_t)&context->result.float_value;
+            je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+            je_jit_arm_emit_ldr_s32(context, return_reg, addr_reg);
+            je_jit_arm_free_reg(context, addr_reg);
+            break;
+        }
+        case JE_TYPE_STRING: {
+            int addr_reg = je_jit_arm_alloc_x_reg(context);
+            uint64_t address = (uint64_t)&context->result.string_value;
+            je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
+            je_jit_arm_emit_ldr_r64(context, return_reg, addr_reg);
+            je_jit_arm_free_reg(context, addr_reg);
+            break;
+        }
+    }
+
     // Unlink the frame record
     je_jit_emit_comment(context, "Epilogue");
     je_jit_arm_emit_ldp_addr(context, JE_JIT_ARM_REG_X29, JE_JIT_ARM_REG_X30, JE_JIT_ARM_REG_SP);
