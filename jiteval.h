@@ -224,7 +224,7 @@ extern "C" {
 //#define JE_DEBUG_FAKE_JIT_AVAILABLE
 
 // When enabled all contexts are forced to have the given flags
-#define JE_DEBUG_FORCE_FLAGS (JE_FLAG_DEBUG_JIT_DISASSEMBLY)
+//#define JE_DEBUG_FORCE_FLAGS (JE_FLAG_DEBUG_JIT_DISASSEMBLY)
 
 // -----------------------------------------------------------------------
 // PLATFORM DETERMINATION OPTIONS
@@ -3941,9 +3941,7 @@ int je_eval_slow(je_context_t* context, je_ast_node_t* node, je_value_t* result)
 int je_eval_jit(je_context_t* context, je_ast_node_t* node, je_value_t* result) {
 #ifndef JE_DEBUG_FAKE_JIT_AVAILABLE
     je_jit_func_t func = (je_jit_func_t)context->jit_executable_memory;
-    printf("Executing JIT function @ 0x%016llx\n", (uint64_t)func);
     func();
-    printf("Finished JIT function, reuslt at 0x%016llx - %f\n", (uint64_t)&context->result.float_value, context->result.float_value);
 #endif
     return JE_RESULT_SUCCESS;
 }
