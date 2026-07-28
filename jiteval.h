@@ -3943,7 +3943,7 @@ int je_eval_jit(je_context_t* context, je_ast_node_t* node, je_value_t* result) 
     je_jit_func_t func = (je_jit_func_t)context->jit_executable_memory;
     printf("Executing JIT function @ 0x%016llx\n", (uint64_t)func);
     func();
-    printf("Finished JIT function, reuslt at 0x%016llx\n", (uint64_t)&context->result.int_value);
+    printf("Finished JIT function, reuslt at 0x%016llx - %.\n", (uint64_t)&context->result.float_value, context->result.float_value);
 #endif
     return JE_RESULT_SUCCESS;
 }
