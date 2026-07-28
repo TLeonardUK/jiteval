@@ -7080,7 +7080,7 @@ int je_jit_arm_emit_function_call(je_context_t* context, je_ast_node_t* node) {
                 int addr_reg = je_jit_arm_alloc_x_reg(context);
                 uint64_t address = (uint64_t)&context->function_params[i].int_value;
                 je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
-                je_jit_arm_emit_str_r32(context, addr_reg, reg1);
+                je_jit_arm_emit_str_r32(context, reg1, addr_reg);
                 je_jit_arm_free_reg(context, addr_reg);
                 break;
             }
@@ -7088,7 +7088,7 @@ int je_jit_arm_emit_function_call(je_context_t* context, je_ast_node_t* node) {
                 int addr_reg = je_jit_arm_alloc_x_reg(context);
                 uint64_t address = (uint64_t)&context->function_params[i].bool_value;
                 je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
-                je_jit_arm_emit_str_r32(context, addr_reg, reg1);
+                je_jit_arm_emit_str_r32(context, reg1, addr_reg);
                 je_jit_arm_free_reg(context, addr_reg);
                 break;
             }
@@ -7096,7 +7096,7 @@ int je_jit_arm_emit_function_call(je_context_t* context, je_ast_node_t* node) {
                 int addr_reg = je_jit_arm_alloc_x_reg(context);
                 uint64_t address = (uint64_t)&context->function_params[i].float_value;
                 je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
-                je_jit_arm_emit_str_s32(context, addr_reg, reg1);
+                je_jit_arm_emit_str_s32(context, reg1, addr_reg);
                 je_jit_arm_free_reg(context, addr_reg);
                 break;
             }
@@ -7104,7 +7104,7 @@ int je_jit_arm_emit_function_call(je_context_t* context, je_ast_node_t* node) {
                 int addr_reg = je_jit_arm_alloc_x_reg(context);
                 uint64_t address = (uint64_t)&context->function_params[i].string_value;
                 je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
-                je_jit_arm_emit_str_r64(context, addr_reg, reg1);
+                je_jit_arm_emit_str_r64(context, reg1, addr_reg);
                 je_jit_arm_free_reg(context, addr_reg);
                 break;
             }
