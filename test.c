@@ -30,6 +30,7 @@ void test_failed() {
 }
 
 void asset_result_float(const char* expr, float expected) {
+    printf("Test: %s\n", expr);
     char error_msg[256];
     error_msg[0] = '\0';
     float ret = je_eval_float(expr, error_msg, sizeof(error_msg));
@@ -44,6 +45,7 @@ void asset_result_float(const char* expr, float expected) {
 }
 
 void asset_result_bool(const char* expr, bool expected) {
+    printf("Test: %s\n", expr);
     char error_msg[256];
     error_msg[0] = '\0';
     bool ret = je_eval_bool(expr, error_msg, sizeof(error_msg));
@@ -58,6 +60,7 @@ void asset_result_bool(const char* expr, bool expected) {
 }
 
 void asset_result_int(const char* expr, int expected) {
+    printf("Test: %s\n", expr);
     char error_msg[256];
     error_msg[0] = '\0';
     int ret = je_eval_int(expr, error_msg, sizeof(error_msg));
@@ -72,6 +75,7 @@ void asset_result_int(const char* expr, int expected) {
 }
 
 void asset_result_string(const char* expr, const char* expected) {
+    printf("Test: %s\n", expr);
     char error_msg[256];
     error_msg[0] = '\0';
     char* ret = je_eval_string(expr, error_msg, sizeof(error_msg));
