@@ -224,7 +224,7 @@ extern "C" {
 //#define JE_DEBUG_FAKE_JIT_AVAILABLE
 
 // When enabled all contexts are forced to have the given flags
-#define JE_DEBUG_FORCE_FLAGS (JE_FLAG_DEBUG_JIT_DISASSEMBLY)
+//#define JE_DEBUG_FORCE_FLAGS (JE_FLAG_DEBUG_JIT_DISASSEMBLY)
 
 // -----------------------------------------------------------------------
 // PLATFORM DETERMINATION OPTIONS
@@ -6557,10 +6557,10 @@ void je_jit_arm_emit_movz_r32_imm16(je_context_t* context, int reg, uint16_t val
 
     je_jit_start_instruction(context);
     je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
-    je_jit_end_instruction(context, "movz w%i, #0x%08x, lsl #%i", reg, value, 0);
+    je_jit_end_instruction(context, "movz w%i, #0x%04x, lsl #%i", reg, value, 0);
 }
 
-void je_jit_arm_emit_movk_r32_imm16(je_context_t* context, int reg, int value, int shift) {
+void je_jit_arm_emit_movk_r32_imm16(je_context_t* context, int reg, uint16_t value, int shift) {
     struct {
         uint32_t Rd      : 5;
         uint32_t imm16   : 16;
@@ -6578,7 +6578,7 @@ void je_jit_arm_emit_movk_r32_imm16(je_context_t* context, int reg, int value, i
 
     je_jit_start_instruction(context);
     je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
-    je_jit_end_instruction(context, "movk w%i, #0x%08x, lsl #%i", reg, value, shift);
+    je_jit_end_instruction(context, "movk w%i, #0x%04x, lsl #%i", reg, value, shift);
 }
 
 void je_jit_arm_emit_movz_r64_imm16(je_context_t* context, int reg, uint16_t value) {
@@ -6599,10 +6599,10 @@ void je_jit_arm_emit_movz_r64_imm16(je_context_t* context, int reg, uint16_t val
 
     je_jit_start_instruction(context);
     je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
-    je_jit_end_instruction(context, "movz x%i, #0x%08x, lsl #%i", reg, value, 0);
+    je_jit_end_instruction(context, "movz x%i, #0x%04x, lsl #%i", reg, value, 0);
 }
 
-void je_jit_arm_emit_movk_r64_imm16(je_context_t* context, int reg, int value, int shift) {
+void je_jit_arm_emit_movk_r64_imm16(je_context_t* context, int reg, uint16_t value, int shift) {
     struct {
         uint32_t Rd      : 5;
         uint32_t imm16   : 16;
@@ -6620,7 +6620,7 @@ void je_jit_arm_emit_movk_r64_imm16(je_context_t* context, int reg, int value, i
 
     je_jit_start_instruction(context);
     je_jit_emit_bytes(context, (uint8_t*)&bitfield, 4);
-    je_jit_end_instruction(context, "movk x%i, #0x%08x, lsl #%i", reg, value, shift);
+    je_jit_end_instruction(context, "movk x%i, #0x%04x, lsl #%i", reg, value, shift);
 }
 
 void je_jit_arm_emit_mov_r32_imm32(je_context_t* context, int reg, uint32_t value) {
@@ -7022,7 +7022,7 @@ void je_jit_arm_emit_epilogue(je_context_t* context, int return_reg) {
             int addr_reg = je_jit_arm_alloc_x_reg(context);
             uint64_t address = (uint64_t)&context->result.int_value;
             je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
-            je_jit_arm_emit_ldr_r32(context, return_reg, addr_reg);
+            je_jit_arm_emit_str_r32(context, return_reg, addr_reg);
             je_jit_arm_free_reg(context, addr_reg);
             break;
         }
@@ -7030,7 +7030,7 @@ void je_jit_arm_emit_epilogue(je_context_t* context, int return_reg) {
             int addr_reg = je_jit_arm_alloc_x_reg(context);
             uint64_t address = (uint64_t)&context->result.bool_value;
             je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
-            je_jit_arm_emit_ldr_r32(context, return_reg, addr_reg);
+            je_jit_arm_emit_str_r32(context, return_reg, addr_reg);
             je_jit_arm_free_reg(context, addr_reg);
             break;
         }
@@ -7038,7 +7038,7 @@ void je_jit_arm_emit_epilogue(je_context_t* context, int return_reg) {
             int addr_reg = je_jit_arm_alloc_x_reg(context);
             uint64_t address = (uint64_t)&context->result.float_value;
             je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
-            je_jit_arm_emit_ldr_s32(context, return_reg, addr_reg);
+            je_jit_arm_emit_str_s32(context, return_reg, addr_reg);
             je_jit_arm_free_reg(context, addr_reg);
             break;
         }
@@ -7046,7 +7046,7 @@ void je_jit_arm_emit_epilogue(je_context_t* context, int return_reg) {
             int addr_reg = je_jit_arm_alloc_x_reg(context);
             uint64_t address = (uint64_t)&context->result.string_value;
             je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
-            je_jit_arm_emit_ldr_r64(context, return_reg, addr_reg);
+            je_jit_arm_emit_str_r64(context, return_reg, addr_reg);
             je_jit_arm_free_reg(context, addr_reg);
             break;
         }
