@@ -224,7 +224,7 @@ extern "C" {
 //#define JE_DEBUG_FAKE_JIT_AVAILABLE
 
 // When enabled all contexts are forced to have the given flags
-#define JE_DEBUG_FORCE_FLAGS (JE_FLAG_DEBUG_JIT_DISASSEMBLY | JE_FLAG_NO_OPTIMIZATION)
+//#define JE_DEBUG_FORCE_FLAGS (JE_FLAG_DEBUG_JIT_DISASSEMBLY | JE_FLAG_NO_OPTIMIZATION)
 
 // -----------------------------------------------------------------------
 // PLATFORM DETERMINATION OPTIONS
@@ -2112,19 +2112,15 @@ int je_get_parameter_int(je_context_t* context, int index, int* result) {
 
 int je_get_parameter_float(je_context_t* context, int index, float* result) {
     if (context->active_function == NULL) {
-        printf("Not in function.\n");
         return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL, NULL);
     }
     if (index >= context->active_function->param_count) {
-        printf("Index above param count.\n");
         return je_store_error(context, JE_RESULT_PARAMETER_INDEX_OUT_OF_BOUNDS, NULL, NULL);
     }
     if (je_get_func_param_type(context, context->active_function, index) != JE_TYPE_FLOAT) {
-        printf("Wrong param type\n");
         return je_store_error(context, JE_RESULT_WRONG_PARAMETER_TYPE, NULL, NULL);
     }
 
-    printf("je_get_parameter_float[%i] 0x%p = %.2f\n", index, &context->function_params[index].float_value, context->function_params[index].float_value);
     *result = context->function_params[index].float_value;
 
     return JE_RESULT_SUCCESS;
@@ -7099,7 +7095,6 @@ int je_jit_arm_emit_function_call(je_context_t* context, je_ast_node_t* node) {
             case JE_TYPE_FLOAT: {
                 int addr_reg = je_jit_arm_alloc_x_reg(context);
                 uint64_t address = (uint64_t)&context->function_params[i].float_value;
-                printf("storing[%i] 0x%p\n", i, (void*)address);
                 je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
                 je_jit_arm_emit_str_s32(context, reg1, addr_reg);
                 je_jit_arm_free_reg(context, addr_reg);
