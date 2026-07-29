@@ -2112,12 +2112,15 @@ int je_get_parameter_int(je_context_t* context, int index, int* result) {
 
 int je_get_parameter_float(je_context_t* context, int index, float* result) {
     if (context->active_function == NULL) {
+        printf("Not in function.\n");
         return je_store_error(context, JE_RESULT_NOT_IN_FUNCTION, NULL, NULL);
     }
     if (index >= context->active_function->param_count) {
+        printf("Index above param count.\n");
         return je_store_error(context, JE_RESULT_PARAMETER_INDEX_OUT_OF_BOUNDS, NULL, NULL);
     }
     if (je_get_func_param_type(context, context->active_function, index) != JE_TYPE_FLOAT) {
+        printf("Wrong param type\n");
         return je_store_error(context, JE_RESULT_WRONG_PARAMETER_TYPE, NULL, NULL);
     }
 
