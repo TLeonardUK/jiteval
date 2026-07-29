@@ -3,7 +3,7 @@ git fetch
 git pull
 
 mkdir -p ../../bin/
-clang ../../benchmark.c -lm -o ../../bin/benchmark.elf
+clang ../../benchmark.c -lm -O3 -o ../../bin/benchmark.elf
 
 retVal=$?
 if [ $retVal -ne 0 ]; then
