@@ -7127,7 +7127,7 @@ int je_jit_arm_emit_function_call(je_context_t* context, je_ast_node_t* node) {
     uint64_t address = (uint64_t)&context->active_function;
     je_jit_arm_emit_mov_r32_imm64(context, active_func_addr_reg, address);
     je_jit_arm_emit_mov_r32_imm64(context, func_addr_reg, (uint64_t)function);
-    je_jit_arm_emit_str_r64(context, active_func_addr_reg, func_addr_reg);
+    je_jit_arm_emit_str_r64(context, func_addr_reg, active_func_addr_reg);
 
     // Push the context argument which goes into X0
     je_jit_emit_comment(context, "Passing context argument");
