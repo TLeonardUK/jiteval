@@ -138,7 +138,7 @@ double run_benchmark(const char* name, int flags) {
     }
 
     {
-        const int k_iterations = 1000;
+        const int k_iterations = 1;
 
         float output_value = 0.0f;
         perf_timer_t timer;

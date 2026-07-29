@@ -2121,6 +2121,7 @@ int je_get_parameter_float(je_context_t* context, int index, float* result) {
         return je_store_error(context, JE_RESULT_WRONG_PARAMETER_TYPE, NULL, NULL);
     }
 
+    printf("je_get_parameter_float[%i] 0x%p = %.2f\n", index, &context->function_params[index].float_value, context->function_params[index].float_value);
     *result = context->function_params[index].float_value;
 
     return JE_RESULT_SUCCESS;
@@ -7095,6 +7096,7 @@ int je_jit_arm_emit_function_call(je_context_t* context, je_ast_node_t* node) {
             case JE_TYPE_FLOAT: {
                 int addr_reg = je_jit_arm_alloc_x_reg(context);
                 uint64_t address = (uint64_t)&context->function_params[i].float_value;
+                printf("storing[%i] 0x%p\n", i, (void*)address);
                 je_jit_arm_emit_mov_r32_imm64(context, addr_reg, address);
                 je_jit_arm_emit_str_s32(context, reg1, addr_reg);
                 je_jit_arm_free_reg(context, addr_reg);
