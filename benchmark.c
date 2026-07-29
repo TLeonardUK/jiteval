@@ -101,7 +101,6 @@ void func_sqr(je_context_t* ctx) {
     float a = 0.0f, b = 0.0f;
     je_get_parameter_float(ctx, 0, &a);
     je_get_parameter_float(ctx, 1, &b);
-    printf("sqr called with a=%.5f b=%.5f\n", a, b);
     je_return_float(ctx, (a * a) + b);
 }
 
@@ -138,7 +137,7 @@ double run_benchmark(const char* name, int flags) {
     }
 
     {
-        const int k_iterations = 1;
+        const int k_iterations = 10000;
 
         float output_value = 0.0f;
         perf_timer_t timer;
