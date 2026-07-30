@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+jobs:
+  windows_msvc_x64_benchmarks:
+    name: Windows MSVC x64 Benchmark
+    runs-on: windows-2022
+
+    steps:
+    - name: Checkout respository
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1.0.2
+      
+    - name: Build
+      shell: cmd 
+      working-directory: ${{github.workspace}}/projects/scripts
+      run: ${{github.workspace}}/projects/scripts/msvc_x64_compile_and_run_benchmark.bat
+      
