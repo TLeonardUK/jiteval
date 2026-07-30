@@ -95,7 +95,7 @@ double perf_timer_elapsed_ms(perf_timer_t* timer) {
 // Bound variables and functions
 // -----------------------------------------------------------------------
 
-const char* g_benchmark_expression = "sqr((((12 * var_float) / (32 * 2)) + 3) + 8, 2)";
+const char* g_benchmark_expression = "sqr(((((12 * var_float) / (32 * 2)) + 3) + 8), 2)";
 
 void func_sqr(je_context_t* ctx) {
     float a = 0.0f, b = 0.0f;
@@ -137,7 +137,7 @@ double run_benchmark(const char* name, int flags) {
     }
 
     {
-        const int k_iterations = 10000;
+        const int k_iterations = 10000000;
 
         float output_value = 0.0f;
         perf_timer_t timer;

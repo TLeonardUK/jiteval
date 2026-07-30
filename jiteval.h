@@ -1938,13 +1938,11 @@ int je_new_context(je_context_t* context, int flags) {
         je_bind_function(context, "abs",            true, &je_intrinsic_abs,                JE_TYPE_FLOAT,      JE_TYPE_FLOAT,      NULL);
 
         je_bind_variable_float  (context,     "PI",              true, 3.14159265f);
-        je_bind_variable_float  (context,     "PI",              true, 3.14159265f);
         je_bind_variable_string (context,    "__platform",       true, JE_PLATFORM_NAME);
         je_bind_variable_string (context,    "__compiler",       true, JE_COMPILER_NAME);
         je_bind_variable_string (context,    "__isa",            true, JE_ISA_NAME);
         je_bind_variable_int    (context,    "__version_major",  true, JE_VERSION_MAJOR);
         je_bind_variable_int    (context,    "__version_minor",  true, JE_VERSION_MINOR);
-
     }
 
     return JE_RESULT_SUCCESS;
@@ -4499,7 +4497,7 @@ void je_jit_x86_emit_add_r32_imm32(je_context_t* context, int dst, int imm32) {
     je_jit_start_instruction(context);
     je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
     je_jit_x86_emit_imm32(context, imm32);
-    je_jit_end_instruction(context, "to-implement");
+    je_jit_end_instruction(context, "add %s, 0x%08x", je_jit_x86_reg_name(dst, 32), imm32);
 }
 
 void je_jit_x86_emit_add_r64_imm32(je_context_t* context, int dst, int imm32) {
@@ -4509,7 +4507,7 @@ void je_jit_x86_emit_add_r64_imm32(je_context_t* context, int dst, int imm32) {
     je_jit_start_instruction(context);
     je_jit_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
     je_jit_x86_emit_imm32(context, imm32);
-    je_jit_end_instruction(context, "to-implement");
+    je_jit_end_instruction(context, "add %s, 0x%08x", je_jit_x86_reg_name(dst, 32), imm32);
 }
 
 void je_jit_x86_emit_sub_r32_imm32(je_context_t* context, int dst, int imm32) {
@@ -4518,7 +4516,7 @@ void je_jit_x86_emit_sub_r32_imm32(je_context_t* context, int dst, int imm32) {
     je_jit_start_instruction(context);
     je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
     je_jit_x86_emit_imm32(context, imm32);
-    je_jit_end_instruction(context, "to-implement");
+    je_jit_end_instruction(context, "sub %s, 0x%08x", je_jit_x86_reg_name(dst, 32), imm32);
 }
 
 void je_jit_x86_emit_sub_r64_imm32(je_context_t* context, int dst, int imm32) {
@@ -4528,7 +4526,7 @@ void je_jit_x86_emit_sub_r64_imm32(je_context_t* context, int dst, int imm32) {
     je_jit_start_instruction(context);
     je_jit_emit_bytes_3(context, rex_byte, opcode_byte, modrm_byte);
     je_jit_x86_emit_imm32(context, imm32);
-    je_jit_end_instruction(context, "to-implement");
+    je_jit_end_instruction(context, "sub %s, 0x%08x", je_jit_x86_reg_name(dst, 32), imm32);
 }
 
 void je_jit_x86_emit_sub_r32_r32(je_context_t* context, int dst, int src) {
@@ -4621,7 +4619,7 @@ void je_jit_x86_emit_mov_r32_direct_r32_addr(je_context_t* context, int dst, int
     uint8_t opcode_byte = 0x8B; // MOV r16/32/64 r/m16/32/64
     je_jit_start_instruction(context);
     je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
-    je_jit_end_instruction(context, "to-implement");
+    je_jit_end_instruction(context, "mov %s, %s", je_jit_x86_reg_name(dst, 32), je_jit_x86_reg_name(src, 32));
 }
 
 void je_jit_x86_emit_mov_r32_addr_r32_direct(je_context_t* context, int dst, int src) {
@@ -4629,7 +4627,7 @@ void je_jit_x86_emit_mov_r32_addr_r32_direct(je_context_t* context, int dst, int
     uint8_t opcode_byte = 0x89; // MOV r/m16/32/64 r16/32/64
     je_jit_start_instruction(context);
     je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
-    je_jit_end_instruction(context, "to-implement");
+    je_jit_end_instruction(context, "mov %s, %s", je_jit_x86_reg_name(dst, 32), je_jit_x86_reg_name(src, 32));
 }
 
 void je_jit_x86_emit_idiv_eax_r32(je_context_t* context, int src) {
@@ -4670,7 +4668,7 @@ void je_jit_x86_emit_and_r32_imm32(je_context_t* context, int dst, uint32_t imm3
     je_jit_start_instruction(context);
     je_jit_emit_bytes_2(context, opcode_byte, modrm_byte);
     je_jit_x86_emit_imm32(context, imm32);
-    je_jit_end_instruction(context, "to-implement");
+    je_jit_end_instruction(context, "and %s, 0x%08x", je_jit_x86_reg_name(dst, 32), imm32);
 }
 
 void je_jit_x86_emit_and_r64_imm64_sign_extended(je_context_t* context, int dst, uint32_t imm32) {
@@ -4923,7 +4921,8 @@ int je_jit_x86_alloc_exact_reg(je_context_t* context, int reg) {
         return reg;
     }
 
-    // TODO: We don't curently support spilling xmm registers.
+    // We don't curently support spilling xmm registers, this shouldn't happen in practice
+    // with the number of xmm registers we have available.
     assert(reg < JE_JIT_X86_REG_XMM0);
 
     // Spill to stack.
@@ -4991,7 +4990,7 @@ int je_jit_x86_alloc_xmm_reg(je_context_t* context) {
         }
     }
 
-    // TODO: We don't curently support spilling xmm registers.
+    // We don't curently support spilling xmm registers.
     assert(false);
     return 0;
 }
@@ -5013,7 +5012,7 @@ void je_jit_x86_free_reg(je_context_t* context, int reg) {
 
     // If this is a spill register, restore the last value.
     if (context->jit_register_allocation[reg].alloc_count > 0) {
-        assert(reg < JE_JIT_X86_REG_XMM0); // TODO: xmm registers don't support spilling yet.
+        assert(reg < JE_JIT_X86_REG_XMM0); // xmm registers don't support spilling.
         je_jit_x86_emit_pop_r32(context, reg);
     }
 }
