@@ -7,6 +7,10 @@ set BINDIR=%cd%\..\..\bin\
 set SRCDIR=%cd%\..\..\
 set SOURCENAME="test"
 
+if not exist "%BINDIR%" ( 
+    mkdir "%BINDIR%"
+)
+
 cd "%BINDIR%"
 
 if exist "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\" (
