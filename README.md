@@ -75,6 +75,7 @@ These are all platforms that have been validated. The library should work on all
 | Windows | Clang | x86 | :heavy_check_mark: | :heavy_check_mark: |
 | Windows | MSVC | x64 | :heavy_check_mark: | :heavy_check_mark: |
 | Windows | Clang | x64 | :heavy_check_mark: | :heavy_check_mark: |
+| Windows | MSVC | ARM64 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | Clang | x86 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | GCC | x86 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | Clang | x64 | :heavy_check_mark: | :heavy_check_mark: |

@@ -3,7 +3,7 @@ git fetch
 git pull
 
 mkdir -p ../../bin/
-gcc ../../test.c -lm -O3 -o ../../bin/test.elf
+gcc ../../benchmark.c -lm -m32 -O3 -o ../../bin/benchmark.elf
 
 retVal=$?
 if [ $retVal -ne 0 ]; then
@@ -11,7 +11,7 @@ if [ $retVal -ne 0 ]; then
     exit 1
 fi
 
-../../bin/test.elf
+../../bin/benchmark.elf
 
 retVal=$?
 if [ $retVal -ne 0 ]; then
