@@ -116,7 +116,7 @@ jobs:
     - name: Build
       shell: bash 
       working-directory: ${{github.workspace}}/projects/scripts
-      run: bash ${{github.workspace}}/projects/scripts/gcc_x64_compile_and_run_tests.bat
+      run: bash ${{github.workspace}}/projects/scripts/gcc_x64_compile_and_run_tests.sh
 
   linux_gcc_x86_benchmarks:
     name: Linux GCC x86 Benchmark
@@ -127,7 +127,7 @@ jobs:
     - name: Build
       shell: bash 
       working-directory: ${{github.workspace}}/projects/scripts
-      run: bash ${{github.workspace}}/projects/scripts/gcc_x86_compile_and_run_benchmark.bat
+      run: bash ${{github.workspace}}/projects/scripts/gcc_x86_compile_and_run_benchmark.sh
 
   linux_gcc_x86_tests:
     name: Linux GCC x86 Tests
@@ -138,4 +138,4 @@ jobs:
     - name: Build
       shell: bash 
       working-directory: ${{github.workspace}}/projects/scripts
-      run: bash ${{github.workspace}}/projects/scripts/gcc_x86_compile_and_run_tests.bat
+      run: bash ${{github.workspace}}/projects/scripts/gcc_x86_compile_and_run_tests.sh
