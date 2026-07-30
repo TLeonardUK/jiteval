@@ -72,15 +72,16 @@ These are all platforms that have been validated. The library should work on all
 | Platform | Compiler | ISA | Non-JIT Support |JIT Support |
 | --- | --- | --- | --- | --- |
 | Windows | MSVC | x86 | :heavy_check_mark: | :heavy_check_mark: |
-| Windows | Clang | x86 | :heavy_check_mark: | :heavy_check_mark: |
 | Windows | MSVC | x64 | :heavy_check_mark: | :heavy_check_mark: |
-| Windows | Clang | x64 | :heavy_check_mark: | :heavy_check_mark: |
 | Windows | MSVC | ARM64 | :heavy_check_mark: | :heavy_check_mark: |
+| Windows | Clang | x86 | :heavy_check_mark: | :heavy_check_mark: |
+| Windows | Clang | x64 | :heavy_check_mark: | :heavy_check_mark: |
+| Windows | Clang | ARM64 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | Clang | x86 | :heavy_check_mark: | :heavy_check_mark: |
-| Linux | GCC | x86 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | Clang | x64 | :heavy_check_mark: | :heavy_check_mark: |
-| Linux | GCC | x64 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | Clang | ARM64 | :heavy_check_mark: | :heavy_check_mark: |
+| Linux | GCC | x86 | :heavy_check_mark: | :heavy_check_mark: |
+| Linux | GCC | x64 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | GCC | ARM64 | :heavy_check_mark: | :heavy_check_mark: |
 | MacOS | Clang | x64 | :heavy_check_mark: | :heavy_check_mark: |
 | MacOS | Clang | ARM64 | :heavy_check_mark: | :heavy_check_mark: |
