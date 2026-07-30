@@ -231,3 +231,48 @@ jobs:
       shell: bash 
       working-directory: ${{github.workspace}}/projects/scripts
       run: bash ${{github.workspace}}/projects/scripts/clang_arm64_compile_and_run_tests.sh
+  
+  # ---------------------------------------------------------------------------------------------------------------------
+  macos_clang_arm64_benchmarks:
+    name: MacOS Clang ARM64 Benchmark
+    runs-on: macos-26
+    steps:
+    - name: Checkout respository
+      uses: actions/checkout@v2
+    - name: Build
+      shell: bash 
+      working-directory: ${{github.workspace}}/projects/scripts
+      run: bash ${{github.workspace}}/projects/scripts/clang_arm64_compile_and_run_benchmark.sh
+
+  macos_clang_arm64_tests:
+    name: MacOS Clang ARM64 Tests
+    runs-on: macos-26
+    steps:
+    - name: Checkout respository
+      uses: actions/checkout@v2
+    - name: Build
+      shell: bash 
+      working-directory: ${{github.workspace}}/projects/scripts
+      run: bash ${{github.workspace}}/projects/scripts/clang_arm64_compile_and_run_tests.sh
+
+  macos_clang_x64_benchmarks:
+    name: MacOS Clang x64 Benchmark
+    runs-on: macos-26-intel
+    steps:
+    - name: Checkout respository
+      uses: actions/checkout@v2
+    - name: Build
+      shell: bash 
+      working-directory: ${{github.workspace}}/projects/scripts
+      run: bash ${{github.workspace}}/projects/scripts/clang_x64_compile_and_run_benchmark.sh
+
+  linux_clang_x64_tests:
+    name: MacOS Clang x64 Tests
+    runs-on: macos-26-intel
+    steps:
+    - name: Checkout respository
+      uses: actions/checkout@v2
+    - name: Build
+      shell: bash 
+      working-directory: ${{github.workspace}}/projects/scripts
+      run: bash ${{github.workspace}}/projects/scripts/clang_x64_compile_and_run_tests.sh
