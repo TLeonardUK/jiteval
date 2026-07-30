@@ -112,6 +112,8 @@ jobs:
     steps:
     - name: Checkout respository
       uses: actions/checkout@v2
+    - name: Install gcc-multilib
+      run: sudo apt install -y gcc-multilib
     - name: Build
       shell: bash 
       working-directory: ${{github.workspace}}/projects/scripts
@@ -123,6 +125,8 @@ jobs:
     steps:
     - name: Checkout respository
       uses: actions/checkout@v2
+    - name: Install gcc-multilib
+      run: sudo apt install -y gcc-multilib
     - name: Build
       shell: bash 
       working-directory: ${{github.workspace}}/projects/scripts
