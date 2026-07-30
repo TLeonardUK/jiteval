@@ -4097,7 +4097,7 @@ int je_free_executable(je_context_t* context, void* memory, int code_size) {
     }
     return JE_RESULT_SUCCESS;
 }
-#elif defined(JE_PLATFORM_LINUX)
+#elif defined(JE_PLATFORM_LINUX) || defined(JE_PLATFORM_MACOS)
 int je_alloc_executable(je_context_t* context, const char* code, int code_size, char** output, int* allocated_size) {
     *output = mmap(0, code_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (*output == (char*)-1) {
