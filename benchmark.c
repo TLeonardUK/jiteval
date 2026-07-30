@@ -53,7 +53,7 @@ double perf_timer_elapsed_ms(perf_timer_t* timer) {
     return duration * 1000.0f;
 }
 
-#elif defined(JE_PLATFORM_LINUX)
+#elif defined(JE_PLATFORM_LINUX) || defined(JE_PLATFORM_MACOS)
 
 typedef struct perf_timer_t {
     struct timespec end_time;

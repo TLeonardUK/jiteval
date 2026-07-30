@@ -301,6 +301,12 @@ extern "C" {
             #define JE_JIT_AVAILABLE
         #endif
     #endif
+#elif defined(JE_PLATFORM_MACOS)
+    #if defined(JE_COMPILER_CLANG)
+        #if defined(JE_ISA_X64) || defined(JE_ISA_X86) || defined(JE_ISA_ARM64)
+            #define JE_JIT_AVAILABLE
+        #endif
+    #endif
 #endif
 
 #if defined(JE_DEBUG_FAKE_JIT_AVAILABLE) && !defined(JE_JIT_AVAILABLE)
