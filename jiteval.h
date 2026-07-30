@@ -482,10 +482,13 @@ void je_memory_stats(je_context_t* context, int* permanent_mem_used, int* transi
     #define _CRT_NONSTDC_NO_DEPRECATE 1
 #endif
 
-#ifdef JE_PLATFORM_WINDOWS
+#if defined(JE_PLATFORM_WINDOWS)
     #include <Windows.h>
+#elif defined(JE_PLATFORM_MACOS)
+    #include <sys/mman.h>
+#elif defined(JE_PLATFORM_LINUX)
+    #include <sys/mman.h>
 #endif
-
 
 #include <assert.h>
 #include <math.h>
@@ -495,10 +498,6 @@ void je_memory_stats(je_context_t* context, int* permanent_mem_used, int* transi
 #include <string.h>
 #include <stdarg.h>
 #include <inttypes.h>
-
-#if defined(JE_PLATFORM_LINUX)
-    #include <sys/mman.h>
-#endif
 
 // -----------------------------------------------------------------------
 // DEFINES
