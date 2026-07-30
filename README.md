@@ -82,6 +82,8 @@ These are all platforms that have been validated. The library should work on all
 | Linux | GCC | x64 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | Clang | ARM64 | :heavy_check_mark: | :heavy_check_mark: |
 | Linux | GCC | ARM64 | :heavy_check_mark: | :heavy_check_mark: |
+| MacOS | Clang | x64 | :heavy_check_mark: | :heavy_check_mark: |
+| MacOS | Clang | ARM64 | :heavy_check_mark: | :heavy_check_mark: |
 | Arduino | GCC | ARM | :heavy_check_mark: | :x: |
 | Arduino | GCC | ARM64 | :heavy_check_mark: | :x: |
 | Arduino | GCC | AVR | :heavy_check_mark: | :x: |
