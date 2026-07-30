@@ -1,5 +1,6 @@
 ![jiteval - single header expression evaluator](./resources/banner.png?raw=true)
 
+![Build Status](https://github.com/TLeonardUK/jiteval/actions/workflows/ci.yml/badge.svg)
 ![GitHub license](https://img.shields.io/github/license/TLeonardUK/jiteval)
 ![GitHub release](https://img.shields.io/github/release/TLeonardUK/jiteval)
 ![GitHub downloads](https://img.shields.io/github/downloads/TLeonardUK/jiteval/total)
