@@ -291,7 +291,7 @@ extern "C" {
 // Determine if JIT is available for the current ISA/Compiler/Platform combination.
 #if defined(JE_PLATFORM_WINDOWS)
     #if defined(JE_COMPILER_MSVC) || defined(JE_COMPILER_GCC) || defined(JE_COMPILER_CLANG)
-        #if defined(JE_ISA_X64) || defined(JE_ISA_X86)
+        #if defined(JE_ISA_X64) || defined(JE_ISA_X86) || defined(JE_ISA_ARM64)
             #define JE_JIT_AVAILABLE
         #endif
     #endif
