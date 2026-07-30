@@ -266,7 +266,7 @@ jobs:
       working-directory: ${{github.workspace}}/projects/scripts
       run: bash ${{github.workspace}}/projects/scripts/clang_x64_compile_and_run_benchmark.sh
 
-  linux_clang_x64_tests:
+  macos_clang_x64_tests:
     name: MacOS Clang x64 Tests
     runs-on: macos-26-intel
     steps:
