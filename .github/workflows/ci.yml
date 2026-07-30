@@ -65,3 +65,33 @@ jobs:
       shell: cmd 
       working-directory: ${{github.workspace}}/projects/scripts
       run: ${{github.workspace}}/projects/scripts/msvc_x86_compile_and_run_tests.bat
+
+  windows_msvc_arm64_benchmarks:
+    name: Windows MSVC ARM64 Benchmark
+    runs-on: windows-11-arm
+    steps:
+    - name: Checkout respository
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1.0.2      
+    - name: Build
+      shell: cmd 
+      working-directory: ${{github.workspace}}/projects/scripts
+      run: ${{github.workspace}}/projects/scripts/msvc_arm64_compile_and_run_benchmark.bat
+
+  windows_msvc_arm64_tests:
+    name: Windows MSVC ARM64 Tests
+    runs-on: windows-11-arm
+    steps:
+    - name: Checkout respository
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1.0.2      
+    - name: Build
+      shell: cmd 
+      working-directory: ${{github.workspace}}/projects/scripts
+      run: ${{github.workspace}}/projects/scripts/msvc_arm64_compile_and_run_tests.bat
