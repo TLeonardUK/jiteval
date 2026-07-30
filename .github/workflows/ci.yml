@@ -6,6 +6,8 @@ on:
   pull_request:
 
 jobs:
+
+  # ---------------------------------------------------------------------------------------------------------------------
   windows_msvc_x64_benchmarks:
     name: Windows MSVC x64 Benchmark
     runs-on: windows-2022
@@ -84,6 +86,7 @@ jobs:
       working-directory: ${{github.workspace}}/projects/scripts
       run: ${{github.workspace}}/projects/scripts/msvc_arm64_compile_and_run_tests.bat
 
+  # ---------------------------------------------------------------------------------------------------------------------
   linux_gcc_x64_benchmarks:
     name: Linux GCC x64 Benchmark
     runs-on: ubuntu-26.04
@@ -153,3 +156,74 @@ jobs:
       shell: bash 
       working-directory: ${{github.workspace}}/projects/scripts
       run: bash ${{github.workspace}}/projects/scripts/gcc_arm64_compile_and_run_tests.sh
+
+  # ---------------------------------------------------------------------------------------------------------------------
+  linux_clang_x64_benchmarks:
+    name: Linux Clang x64 Benchmark
+    runs-on: ubuntu-26.04
+    steps:
+    - name: Checkout respository
+      uses: actions/checkout@v2
+    - name: Build
+      shell: bash 
+      working-directory: ${{github.workspace}}/projects/scripts
+      run: bash ${{github.workspace}}/projects/scripts/clang_x64_compile_and_run_benchmark.sh
+
+  linux_clang_x64_tests:
+    name: Linux Clang x64 Tests
+    runs-on: ubuntu-26.04
+    steps:
+    - name: Checkout respository
+      uses: actions/checkout@v2
+    - name: Build
+      shell: bash 
+      working-directory: ${{github.workspace}}/projects/scripts
+      run: bash ${{github.workspace}}/projects/scripts/clang_x64_compile_and_run_tests.sh
+
+  linux_clang_x86_benchmarks:
+    name: Linux Clang x86 Benchmark
+    runs-on: ubuntu-26.04
+    steps:
+    - name: Checkout respository
+      uses: actions/checkout@v2
+    - name: Install clang-multilib
+      run: sudo apt-get install libc6-dev-i386-cross
+    - name: Build
+      shell: bash 
+      working-directory: ${{github.workspace}}/projects/scripts
+      run: bash ${{github.workspace}}/projects/scripts/clang_x86_compile_and_run_benchmark.sh
+
+  linux_clang_x86_tests:
+    name: Linux Clang x86 Tests
+    runs-on: ubuntu-26.04
+    steps:
+    - name: Checkout respository
+      uses: actions/checkout@v2
+    - name: Install clang-multilib
+      run: sudo apt-get install libc6-dev-i386-cross
+    - name: Build
+      shell: bash 
+      working-directory: ${{github.workspace}}/projects/scripts
+      run: bash ${{github.workspace}}/projects/scripts/clang_x86_compile_and_run_tests.sh
+  
+  linux_clang_arm64_benchmarks:
+    name: Linux Clang ARM64 Benchmark
+    runs-on: ubuntu-26.04-arm
+    steps:
+    - name: Checkout respository
+      uses: actions/checkout@v2
+    - name: Build
+      shell: bash 
+      working-directory: ${{github.workspace}}/projects/scripts
+      run: bash ${{github.workspace}}/projects/scripts/clang_arm64_compile_and_run_benchmark.sh
+
+  linux_clang_arm64_tests:
+    name: Linux Clang ARM64 Tests
+    runs-on: ubuntu-26.04-arm
+    steps:
+    - name: Checkout respository
+      uses: actions/checkout@v2
+    - name: Build
+      shell: bash 
+      working-directory: ${{github.workspace}}/projects/scripts
+      run: bash ${{github.workspace}}/projects/scripts/clang_arm64_compile_and_run_tests.sh
