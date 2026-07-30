@@ -3,7 +3,6 @@
 ![Build Status](https://github.com/TLeonardUK/jiteval/actions/workflows/ci.yml/badge.svg)
 ![GitHub license](https://img.shields.io/github/license/TLeonardUK/jiteval)
 ![GitHub release](https://img.shields.io/github/release/TLeonardUK/jiteval)
-![GitHub downloads](https://img.shields.io/github/downloads/TLeonardUK/jiteval/total)
 
 # What is this project?
 JitEval is a single-header library written in C, that provides support for evaluating arbitrary C-style expressions quickly and easily. It uses no external dependencies and is licensed under MIT. It optionally supports just-in-time (JIT) compiling the expressions to machine code in situations where the speed is critical.
